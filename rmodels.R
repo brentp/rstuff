@@ -310,8 +310,52 @@ annotate_top_table = function(tt, probe_info="probe_lookups.txt"){
     return(anno)
 }
 
-matrix.eQTL.ez = function(meth_data, expr_data, clinical, model, prefix){
-    
+matrix.eQTL.ez = function(marker_data, expr_data, clinical, model, prefix,
+                            cis_dist=1e6){
+
+    stopifnot(all(colnames(marker_data) == colnames(expr_data)))
+    stopifnot(all(rownames(clin) == colnames(expr_data)))
+
+    full_formula = as.formula(model) 
+    mod  = model.matrix(full_formula, data=clin)
+    complete = complete.cases(clininical[,attr(terms(full_formula), "term.labels")])
+    err.log("removing:", sum(!complete), "because of missing data")
+    err.log("leaving:", sum(complete), "rows of data.")
+    expr_complete = as.matrix(expr_data[,complete])
+    marker_complete = as.matrix(marker_data[,complete])
+
+    rm(marker_data); rm(expr_data); gc()
+    library(MatrixEQTL)
+
+    clin = SlicedData$new(t(mod));
+    gene = SlicedData$new(expr_complete);
+    snps = SlicedData$new(marker_complete);
+
+    stopifnot(all(colnames(gene) == colnames(clin)))
+    stopifnot(all(colnames(gene) == colnames(snps)))
+
+    output_file_name_tra = paste(prefix, 'eQTL_results_R_tra_', i, '.txt', sep="")
+    output_file_name_cis = paste(prefix, 'eQTL_results_R_cis_', i, '.txt', sep="")
+
+# TODO: gene_pos, snps_pos
+
+    me = Matrix_eQTL_main(
+        snps = snps,
+        gene = gene,
+        cvrt = clin,
+        output_file_name  = output_file_name_tra,
+        pvOutputThreshold = 1e-5,
+        useModel = modelLINEAR_CROSS,
+        errorCovariance = numeric(),
+        verbose = TRUE,
+        output_file_name.cis = output_file_name_cis,
+        pvOutputThreshold.cis = 1e-4,
+        snpspos = snpspos,
+        genepos = genepos,
+        cisDist = cis_dist,
+        pvalue.hist = "qqplot");
+
+# TODO: plots.
 
 
 }
