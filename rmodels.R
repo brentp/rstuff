@@ -309,3 +309,9 @@ annotate_top_table = function(tt, probe_info="probe_lookups.txt"){
     anno = .fix_anno(merge(lookup, tt, by.y="ID", by.x="probe"))
     return(anno)
 }
+
+matrix.eQTL.ez = function(meth_data, expr_data, clinical, model, prefix){
+    
+
+
+}
