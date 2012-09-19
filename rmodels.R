@@ -154,7 +154,6 @@ sva.limma.ez = function(data, clin, model,
                 contrasts=NULL, probe_len=1,
                 batch_correct=TRUE){
     coef = 2
-    library(sva)
 
     # the first term is always the variable of interest.
     full_formula = as.formula(model)
@@ -173,6 +172,7 @@ sva.limma.ez = function(data, clin, model,
 
 
     if(batch_correct){
+	library(sva)
         mod0 = model.matrix(null_formula, data=clin)
 
         stopifnot(nrow(mod) == ncol(data_complete))
@@ -204,7 +204,6 @@ peer.limma.ez = function(data, clin, model,
                 contrasts=NULL, probe_len=1,
                 batch_correct=TRUE){
     #https://github.com/PMBio/peer/wiki/Tutorial
-    library(peer)
     coef = 2
 
     # the first term is always the variable of interest.
@@ -239,6 +238,7 @@ peer.limma.ez = function(data, clin, model,
 
 
 run.peer = function(mod, data_complete, prefix=NULL){
+    library(peer)
     peer_obj = PEER()
     PEER_setCovariates(peer_obj, mod)
     PEER_setTolerance(peer_obj, 1e-9)
