@@ -338,32 +338,40 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     complete = complete.cases(clinical[,attr(terms(full_formula), "term.labels")])
     err.log("removing:", sum(!complete), "because of missing data")
     err.log("leaving:", sum(complete), "rows of data.")
-    expr_complete = as.matrix(expr_data[,complete])
-    marker_complete = as.matrix(marker_data[,complete])
+
+    library(MatrixEQTL)
+    expr_complete = SlicedData$new(as.matrix(expr_data[,complete]))
+    rm(expr_data); gc()
+    marker_complete = SlicedData$new(as.matrix(marker_data[,complete]))
+    rm(marker_data); gc()
 
     err.log("expr using:", paste(dim(expr_complete), collapse=", ", sep=", "))
     err.log("snps using:", paste(dim(marker_complete), collapse=", ", sep=", "))
     err.log("using column:", colnames(mod)[ncol(mod)])
-    
-    rm(marker_data); rm(expr_data); gc()
-    library(MatrixEQTL)
+
 
     if(!is.na(seed)){
-        set.seed(as.integer(seed))
-        err.log("shuffling data, only last column")
-        prefix = paste(prefix, "shuffle.", sep="")
+        seed = as.integer(seed)
+        set.seed(seed)
         perm = sample(nrow(mod))  
-        mod[, ncol(mod)] = mod[perm, ncol(mod)]
+        if(seed > 0){
+            err.log("shuffling clinical data, only last column")
+            mod[, ncol(mod)] = mod[perm, ncol(mod)]
+            prefix = paste(prefix, "shuffle.", colnames(mod)[ncol(mod)], ".", seed, ".", sep="")
+        }
+        else {
+            err.log("shuffling clinical data, all columns")
+            mod[, ] = mod[perm, ]
+            prefix = paste(prefix, "shuffle.all", seed, ".", sep="")
+        }
     } 
-
     write.matrix(mod, name="ID", file=paste(prefix, "model.txt", sep=""))
     clin = SlicedData$new(t(mod));
-    gene = SlicedData$new(expr_complete);
+
 
     # get the location of the SNPs.
     if(is.null(marker_locs)){
         marker_locs = rownames(marker_complete)
-
         chrm_snp = unlist(lapply(strsplit(as.character(marker_locs), ":", fixed=TRUE), 
                           function(r){ r[1] }))
 
@@ -375,24 +383,24 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     }
     else {
         snpspos = marker_locs
+        rm(marker_locs); gc()
     }
-    snps = SlicedData$new(marker_complete);
-    stopifnot(all(colnames(gene) == colnames(clin)))
-    stopifnot(all(colnames(gene) == colnames(snps)))
-    stopifnot(nrow(snpspos) == nrow(snps))
+    stopifnot(all(colnames(marker_complete) == colnames(clin)))
+    stopifnot(all(colnames(expr_complete) == colnames(marker_complete)))
+    stopifnot(nrow(snpspos) == nrow(marker_complete))
 
     genepos = data.frame(geneid=expr_locs$probe, chrm_probe=expr_locs$chrom,
                          s1=expr_locs$start, s2=expr_locs$end)
 
     rm(expr_locs)
-    #stopifnot(nrow(genepos) == nrow(gene))
+    err.log(ls())
 
     output_file_name_tra = paste(prefix, 'eQTL_tra.txt', sep="")
     output_file_name_cis = paste(prefix, 'eQTL_cis.txt', sep="")
 
     me = Matrix_eQTL_main(
-        snps = snps,
-        gene = gene,
+        snps = marker_complete,
+        gene = expr_complete,
         cvrt = clin,
         output_file_name  = output_file_name_tra,
         pvOutputThreshold = 1e-5,
