@@ -1,5 +1,5 @@
 library(limma)
-options(scipen=100) # stop it from printing 1e6 instead of 1000000
+options(scipen=100, stringsAsFactors=FALSE) # stop it from printing 1e6 instead of 1000000
 
 
 .write.raw = function(RGset, dp, out_prefix){
@@ -311,6 +311,7 @@ annotate_top_table = function(tt, probe_info="probe_lookups.txt"){
 }
 
 matrix.eQTL.ez = function(marker_data, expr_data, clinical, model, prefix,
+                            expr_locs, marker_locs=NULL,
                             cis_dist=1e6){
 
     stopifnot(all(colnames(marker_data) == colnames(expr_data)))
@@ -324,20 +325,44 @@ matrix.eQTL.ez = function(marker_data, expr_data, clinical, model, prefix,
     expr_complete = as.matrix(expr_data[,complete])
     marker_complete = as.matrix(marker_data[,complete])
 
+    err.log("expr using:", paste(dim(expr_complete, collapse=", ", sep=", ")))
+    err.log("snps using:", paste(dim(marker_complete, collapse=", ", sep=", ")))
+
     rm(marker_data); rm(expr_data); gc()
     library(MatrixEQTL)
 
     clin = SlicedData$new(t(mod));
     gene = SlicedData$new(expr_complete);
-    snps = SlicedData$new(marker_complete);
 
+    # get the location of the SNPs.
+    if(is.null(marker_locs)){
+	marker_locs = rownames(marker_complete)
+
+        chrm_snp = unlist(lapply(strsplit(as.character(tt$ID), ":", fixed=TRUE), 
+                          function(r){ r[1] }))
+
+        pos = unlist(lapply(strsplit(as.character(tt$ID), ":", fixed=TRUE),
+                          function(r){ as.numeric(r[2]) }))
+
+        snpspos = data.frame(snp=marker_locs, chrm_snp=chrm_snp, pos=pos)
+        rm(marker_locs, pos, chrm_snp); gc()
+    }
+    else {
+        snpspos = marker_locs
+    }
+    snps = SlicedData$new(marker_complete);
     stopifnot(all(colnames(gene) == colnames(clin)))
     stopifnot(all(colnames(gene) == colnames(snps)))
+    stopifnot(nrow(snpspos) == nrow(snps))
 
-    output_file_name_tra = paste(prefix, 'eQTL_results_R_tra_', i, '.txt', sep="")
-    output_file_name_cis = paste(prefix, 'eQTL_results_R_cis_', i, '.txt', sep="")
+    genepos = data.frame(geneid=expr_locs$probe, chrm_probe=expr_locs$chrom,
+                         s1=expr_locs$start, s2=expr_locs$end)
 
-# TODO: gene_pos, snps_pos
+    rm(expr_locs)
+    stopifnot(nrow(genepos) == nrow(gene))
+
+    output_file_name_tra = paste(prefix, 'eQTL_tra.txt', sep="")
+    output_file_name_cis = paste(prefix, 'eQTL_cis.txt', sep="")
 
     me = Matrix_eQTL_main(
         snps = snps,
@@ -355,7 +380,11 @@ matrix.eQTL.ez = function(marker_data, expr_data, clinical, model, prefix,
         cisDist = cis_dist,
         pvalue.hist = "qqplot");
 
-# TODO: plots.
-
-
+    jpeg(paste(prefix, "qq.plot.jpeg", sep=""))
+    plot(me)
+    dev.off()
+    err.log("cis tests:", me$cis$ntests)
+    err.log("trans tests:", me$trans$ntests)
+    err.log(summary(me))
+    return(me)
 }
