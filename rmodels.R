@@ -1,5 +1,5 @@
 library(limma)
-options(scipen=100, stringsAsFactors=FALSE) # stop it from printing 1e6 instead of 1000000
+options(scipen=15, stringsAsFactors=FALSE) # stop it from printing 1e6 instead of 1000000
 
 
 .write.raw.meth = function(RGset, dp, out_prefix){
@@ -325,7 +325,7 @@ annotate_top_table = function(tt, probe_info="probe_lookups.txt"){
 
 matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
                             expr_locs, marker_locs=NULL,
-                            cis_dist=1e6){
+                            cis_dist=1e6, seed=NA){
 
     prefix = .adjust_prefix(prefix)
     stopifnot(all(colnames(marker_data) == colnames(expr_data)))
@@ -334,7 +334,6 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     full_formula = as.formula(model) 
     mod = as.matrix(model.matrix(full_formula, data=clinical))
     mod = mod[,!colnames(mod) %in% "(Intercept)"]
-    write.matrix(mod, name="ID", file=paste(prefix, "model.txt", sep=""))
 
     complete = complete.cases(clinical[,attr(terms(full_formula), "term.labels")])
     err.log("removing:", sum(!complete), "because of missing data")
@@ -344,10 +343,20 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
 
     err.log("expr using:", paste(dim(expr_complete), collapse=", ", sep=", "))
     err.log("snps using:", paste(dim(marker_complete), collapse=", ", sep=", "))
+    err.log("using column:", colnames(mod)[ncol(mod)])
     
     rm(marker_data); rm(expr_data); gc()
     library(MatrixEQTL)
 
+    if(!is.na(seed)){
+        set.seed(as.integer(seed))
+        err.log("shuffling data, only last column")
+        prefix = paste(prefix, "shuffle.", sep="")
+        perm = sample(nrow(mod))  
+        mod[, ncol(mod)] = mod[perm, ncol(mod)]
+    } 
+
+    write.matrix(mod, name="ID", file=paste(prefix, "model.txt", sep=""))
     clin = SlicedData$new(t(mod));
     gene = SlicedData$new(expr_complete);
 
