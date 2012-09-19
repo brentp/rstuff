@@ -2,7 +2,7 @@ library(limma)
 options(scipen=100, stringsAsFactors=FALSE) # stop it from printing 1e6 instead of 1000000
 
 
-.write.raw = function(RGset, dp, out_prefix){
+.write.raw.meth = function(RGset, dp, out_prefix){
     raw = preprocessRaw(RGset)
     colnames(dp) = paste("detection-p-", colnames(dp), sep="")
     methylated = getMeth(raw)
@@ -43,7 +43,7 @@ normalize.450k = function(fclin, out_prefix, base_path, id_col=1){
 
     # 
     dp = detectionP(RGset)
-    .write.raw(RGset, dp, out_prefix)
+    .write.raw.meth(RGset, dp, out_prefix)
 
     beta = getBeta(Mset.swan)
     colnames(beta) = pd[,id_col]
