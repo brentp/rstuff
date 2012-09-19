@@ -316,17 +316,25 @@ annotate_top_table = function(tt, probe_info="probe_lookups.txt"){
     return(anno)
 }
 
+.adjust_prefix = function(prefix){
+    if(substr(prefix, nchar(prefix), nchar(prefix)) %in% c(".", "-", "/")){
+        return(prefix)
+    }
+    return(paste(prefix, ".", sep=""))
+}
+
 matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
                             expr_locs, marker_locs=NULL,
                             cis_dist=1e6){
 
+    prefix = .adjust_prefix(prefix)
     stopifnot(all(colnames(marker_data) == colnames(expr_data)))
     stopifnot(all(rownames(clinical) == colnames(expr_data)))
 
     full_formula = as.formula(model) 
     mod = as.matrix(model.matrix(full_formula, data=clinical))
     mod = mod[,!colnames(mod) %in% "(Intercept)"]
-    write.matrix(mod, name="ID", file=paste(prefix, "model.txt", sep="."))
+    write.matrix(mod, name="ID", file=paste(prefix, "model.txt", sep=""))
 
     complete = complete.cases(clinical[,attr(terms(full_formula), "term.labels")])
     err.log("removing:", sum(!complete), "because of missing data")
@@ -370,8 +378,8 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     rm(expr_locs)
     #stopifnot(nrow(genepos) == nrow(gene))
 
-    output_file_name_tra = paste(prefix, 'eQTL_tra.txt', sep=".")
-    output_file_name_cis = paste(prefix, 'eQTL_cis.txt', sep=".")
+    output_file_name_tra = paste(prefix, 'eQTL_tra.txt', sep="")
+    output_file_name_cis = paste(prefix, 'eQTL_cis.txt', sep="")
 
     me = Matrix_eQTL_main(
         snps = snps,
