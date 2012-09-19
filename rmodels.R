@@ -172,7 +172,7 @@ sva.limma.ez = function(data, clin, model,
 
 
     if(batch_correct){
-	library(sva)
+        library(sva)
         mod0 = model.matrix(null_formula, data=clin)
 
         stopifnot(nrow(mod) == ncol(data_complete))
@@ -336,7 +336,7 @@ matrix.eQTL.ez = function(marker_data, expr_data, clinical, model, prefix,
 
     # get the location of the SNPs.
     if(is.null(marker_locs)){
-	marker_locs = rownames(marker_complete)
+        marker_locs = rownames(marker_complete)
 
         chrm_snp = unlist(lapply(strsplit(as.character(tt$ID), ":", fixed=TRUE), 
                           function(r){ r[1] }))
