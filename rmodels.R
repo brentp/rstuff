@@ -22,6 +22,12 @@ read.tab = function(fname, sep="\t", header=TRUE, ...){
     return(clin)
 }
 
+read.mat = function(fname, row.names=1, sep="\t", ...){
+    m = read.delim(fname, row.names=row.names, header=TRUE, sep=sep, ...)
+    return(as.matrix(m))
+}
+
+
 
 normalize.450k = function(fclin, out_prefix, base_path, id_col=1){
     library(minfi)
@@ -168,7 +174,7 @@ sva.limma.ez = function(data, clin, model,
     data_complete = as.matrix(data[,complete])
 
     library(Matrix)
-    mod  = model.matrix(full_formula, data=clin)
+    mod = model.matrix(full_formula, data=clin)
 
 
     if(batch_correct){
@@ -188,15 +194,19 @@ sva.limma.ez = function(data, clin, model,
                         "mod.sva.txt", sep=""), quote=FALSE)
 
         data_complete = cleanY(data_complete, mod, svobj$sv)
-        tmp = cbind(rownames(data_complete), data_complete)
-        colnames(tmp)[1] = "probe"
-        write.table(tmp, row.names=F, sep="\t", quote=F, file=paste(prefix, ".cleaned.y.txt", sep=""))
-        rm(tmp); gc();
+        write.matrix(data_complete, file=paste(prefix, ".cleaned.y.txt", sep=""))
     }
 
     fit = limma.ez(data_complete, mod, coef, contrasts, prefix, probe_len)
     return(fit)
 }
+
+write.matrix = function(mat, file, name="probe", quote=FALSE, sep="\t", ...){
+    mat = cbind(rownames(mat), mat)
+    colnames(mat)[1] = name
+    write.table(mat, row.names=F, file=file, quote=quote, sep=sep, ...)
+    gc();
+}    
 
 
 peer.limma.ez = function(data, clin, model,
@@ -226,9 +236,7 @@ peer.limma.ez = function(data, clin, model,
         # we remove the batch effects from the data, rather than including the
         # peers as covariates.
         data_complete = cleanY(data_complete, mod, peer_factors)
-        tmp = cbind(rownames(data_complete), data_complete)
-        colnames(tmp)[1] = "probe"
-        write.table(tmp, row.names=F, sep="\t", quote=F, file=paste(prefix, ".cleaned.y.txt", sep=""))
+        write.matrix(data_complete, file=paste(prefix, ".cleaned.y.txt", sep=""))
     }
 
     # including all peer factors, just include those before 1/alpha levels off?
@@ -252,8 +260,6 @@ run.peer = function(mod, data_complete, prefix=NULL){
         f = paste(prefix, "peer.alpha.txt", sep=".")
         write.table(PEER_getAlpha(peer_obj), file=f, row.names=F, sep="\t")
     }
-    print(dim(modpeer))
-    print(dim(mod))
     colnames(modpeer) = c(colnames(mod), paste('peer_', 1:(ncol(modpeer) - ncol(mod)), sep=""))
     # return only the peer columns.
     return(modpeer[,(ncol(mod) + 1):(ncol(modpeer))])
@@ -310,24 +316,27 @@ annotate_top_table = function(tt, probe_info="probe_lookups.txt"){
     return(anno)
 }
 
-matrix.eQTL.ez = function(marker_data, expr_data, clinical, model, prefix,
+matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
                             expr_locs, marker_locs=NULL,
                             cis_dist=1e6){
 
     stopifnot(all(colnames(marker_data) == colnames(expr_data)))
-    stopifnot(all(rownames(clin) == colnames(expr_data)))
+    stopifnot(all(rownames(clinical) == colnames(expr_data)))
 
     full_formula = as.formula(model) 
-    mod  = model.matrix(full_formula, data=clin)
-    complete = complete.cases(clininical[,attr(terms(full_formula), "term.labels")])
+    mod = as.matrix(model.matrix(full_formula, data=clinical))
+    mod = mod[,!colnames(mod) %in% "(Intercept)"]
+    write.matrix(mod, name="ID", file=paste(prefix, "model.txt", sep="."))
+
+    complete = complete.cases(clinical[,attr(terms(full_formula), "term.labels")])
     err.log("removing:", sum(!complete), "because of missing data")
     err.log("leaving:", sum(complete), "rows of data.")
     expr_complete = as.matrix(expr_data[,complete])
     marker_complete = as.matrix(marker_data[,complete])
 
-    err.log("expr using:", paste(dim(expr_complete, collapse=", ", sep=", ")))
-    err.log("snps using:", paste(dim(marker_complete, collapse=", ", sep=", ")))
-
+    err.log("expr using:", paste(dim(expr_complete), collapse=", ", sep=", "))
+    err.log("snps using:", paste(dim(marker_complete), collapse=", ", sep=", "))
+    
     rm(marker_data); rm(expr_data); gc()
     library(MatrixEQTL)
 
@@ -338,10 +347,10 @@ matrix.eQTL.ez = function(marker_data, expr_data, clinical, model, prefix,
     if(is.null(marker_locs)){
         marker_locs = rownames(marker_complete)
 
-        chrm_snp = unlist(lapply(strsplit(as.character(tt$ID), ":", fixed=TRUE), 
+        chrm_snp = unlist(lapply(strsplit(as.character(marker_locs), ":", fixed=TRUE), 
                           function(r){ r[1] }))
 
-        pos = unlist(lapply(strsplit(as.character(tt$ID), ":", fixed=TRUE),
+        pos = unlist(lapply(strsplit(as.character(marker_locs), ":", fixed=TRUE),
                           function(r){ as.numeric(r[2]) }))
 
         snpspos = data.frame(snp=marker_locs, chrm_snp=chrm_snp, pos=pos)
@@ -359,10 +368,10 @@ matrix.eQTL.ez = function(marker_data, expr_data, clinical, model, prefix,
                          s1=expr_locs$start, s2=expr_locs$end)
 
     rm(expr_locs)
-    stopifnot(nrow(genepos) == nrow(gene))
+    #stopifnot(nrow(genepos) == nrow(gene))
 
-    output_file_name_tra = paste(prefix, 'eQTL_tra.txt', sep="")
-    output_file_name_cis = paste(prefix, 'eQTL_cis.txt', sep="")
+    output_file_name_tra = paste(prefix, 'eQTL_tra.txt', sep=".")
+    output_file_name_cis = paste(prefix, 'eQTL_cis.txt', sep=".")
 
     me = Matrix_eQTL_main(
         snps = snps,
@@ -385,6 +394,6 @@ matrix.eQTL.ez = function(marker_data, expr_data, clinical, model, prefix,
     dev.off()
     err.log("cis tests:", me$cis$ntests)
     err.log("trans tests:", me$trans$ntests)
-    err.log(summary(me))
+    #err.log(summary(me))
     return(me)
 }
