@@ -9,7 +9,7 @@ options(scipen=15, stringsAsFactors=FALSE) # stop it from printing 1e6 instead o
     colnames(methylated) = paste("methylated-", colnames(methylated), sep="")
     unmethylated = getUnmeth(raw)
     colnames(unmethylated) = paste("unmethylated-", colnames(unmethylated), sep="")
-    dpout = cbind(unmethylated, methylated, format(dp, digits=3))
+    dpout = cbind(unmethylated, methylated, format(dp, digits=3, trim=TRUE))
     write.table(dpout, sep="\t", quote=FALSE, file=paste(out_prefix, "raw-values.txt", sep=""), row.names=T)
     rm(methylated); rm(unmethylated); gc();
 }
@@ -66,7 +66,7 @@ normalize.450k = function(fclin, out_prefix, base_path, id_col=1){
     beta = getBeta(Mset.swan)
     colnames(beta) = pd[,id_col]
     message("writing beta ...")
-    write.table(format(beta, digits=3), sep="\t", quote=FALSE, file=paste(out_prefix, "beta.txt", sep=""), row.names=T)
+    write.matrix(beta, file=paste(out_prefix, "beta.txt", sep=""))
     rm(beta)
     gc()
 
@@ -74,10 +74,10 @@ normalize.450k = function(fclin, out_prefix, base_path, id_col=1){
     colnames(M) = pd[,id_col]
 
     message("writing M...")
-    write.table(format(M, digits=3), sep="\t", quote=FALSE, file=paste(out_prefix, "M.txt", sep=""), row.names=T)
+    write.matrix(M, file=paste(out_prefix, "M.txt", sep=""))
     M[dp > 0.05] = NA
     message("values > 0.05:", sum(dp > 0.05))
-    write.table(format(M, digits=3), sep="\t", quote=FALSE, file=paste(out_prefix, "M.pgt05.txt", sep=""), row.names=T)
+    write.matrix(M, file=paste(out_prefix, "M.pgt05.txt", sep=""))
     return(M)
 }
 
@@ -133,7 +133,7 @@ normalize.charm = function(sample_description, out_prefix, id_col=1){
     colnames(p) = pd[,id_col]
 
     message("writing...")
-    write.table(format(p, digits=3), sep="\t", quote=FALSE, file=paste(out_prefix, ".methp.txt", sep=""), row.names=T)
+    write.matrix(p, file=paste(out_prefix, ".methp.txt", sep=""))
     write.table(pd, sep="\t", quote=FALSE, file=paste(out_prefix, ".clinical.txt", sep=""), row.names=F)
     return(p)
 }
@@ -213,10 +213,10 @@ sva.limma.ez = function(data, clin, model,
     return(fit)
 }
 
-write.matrix = function(mat, file, name="probe", quote=FALSE, sep="\t", ...){
-    mat = cbind(rownames(mat), mat)
+write.matrix = function(mat, file, name="probe", quote=FALSE, sep="\t", digits=3, ...){
+    mat = cbind(rownames(mat), format(round(mat, digits=digits), digits=digits, trim=TRUE))
     colnames(mat)[1] = name
-    write.table(mat, row.names=F, file=file, quote=quote, sep=sep, ...)
+    write.table(mat, file=file, quote=quote, sep=sep, row.names=FALSE, ...)
     gc();
 }    
 
@@ -405,9 +405,8 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
 
     genepos = data.frame(geneid=expr_locs$probe, chrm_probe=expr_locs$chrom,
                          s1=expr_locs$start, s2=expr_locs$end)
-
     rm(expr_locs)
-    err.log(ls())
+    gc(TRUE)
 
     output_file_name_tra = paste(prefix, 'eQTL_tra.txt', sep="")
     output_file_name_cis = paste(prefix, 'eQTL_cis.txt', sep="")
