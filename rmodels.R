@@ -18,13 +18,25 @@ read.tab = function(fname, sep="\t", header=TRUE, ...){
     if(class(fname) != "character"){
         return(fname)
     }
-    clin = read.delim(fname, sep=sep, header=TRUE, ...)
+    clin = read.delim(fname, sep=sep, header=TRUE, comment.char="", ...)
     return(clin)
 }
 
-read.mat = function(fname, row.names=1, sep="\t", ...){
-    m = read.delim(fname, row.names=row.names, header=TRUE, sep=sep, ...)
-    return(as.matrix(m))
+
+
+read.mat = function(fname, sep="\t"){ 
+    # much faster way to read a matrix.
+    #  m = read.delim(fname, row.names=row.names, header=header, sep=sep,
+    #                                 comment.char="", ...)
+    library(MatrixEQTL);
+    s = SlicedData$new();
+    s$fileDelimiter = sep;
+    s$fileOmitCharacters = 'NA';
+    s$fileSkipRows = 1;
+    s$fileSkipColumns = 1;
+    s$fileSliceSize = 18000;
+    s$LoadFile(fname);
+    return(as.matrix(s))
 }
 
 
@@ -341,14 +353,16 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
 
     library(MatrixEQTL)
     expr_complete = SlicedData$new(as.matrix(expr_data[,complete]))
-    rm(expr_data); gc()
+    expr_complete$ResliceCombined()
+    rm(expr_data); gc(TRUE)
+
     marker_complete = SlicedData$new(as.matrix(marker_data[,complete]))
-    rm(marker_data); gc()
+    marker_complete$ResliceCombined()
+    rm(marker_data); gc(TRUE)
 
     err.log("expr using:", paste(dim(expr_complete), collapse=", ", sep=", "))
     err.log("snps using:", paste(dim(marker_complete), collapse=", ", sep=", "))
     err.log("using column:", colnames(mod)[ncol(mod)])
-
 
     if(!is.na(seed)){
         seed = as.integer(seed)
@@ -408,7 +422,7 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
         errorCovariance = numeric(),
         verbose = TRUE,
         output_file_name.cis = output_file_name_cis,
-        pvOutputThreshold.cis = 1e-4,
+        pvOutputThreshold.cis = 1e-5,
         snpspos = snpspos,
         genepos = genepos,
         cisDist = cis_dist,
