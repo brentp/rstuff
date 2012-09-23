@@ -335,9 +335,40 @@ annotate_top_table = function(tt, probe_info="probe_lookups.txt"){
     return(paste(prefix, ".", sep=""))
 }
 
+.shuffle_clinical = function(mod, seed, prefix){
+    if(is.na(seed)){
+        return(mod)
+    } 
+    seed = as.integer(seed)
+    set.seed(seed)
+    perm = sample(nrow(mod))  
+    if(seed > 0){
+        err.log("shuffling clinical data, only last column")
+        mod[, ncol(mod)] = mod[perm, ncol(mod)]
+        prefix = paste(prefix, "shuffle.", colnames(mod)[ncol(mod)], ".", seed, ".", sep="")
+    }
+    else {
+        err.log("shuffling clinical data, all columns")
+        mod[, ] = mod[perm, ]
+        prefix = paste(prefix, "shuffle.all", seed, ".", sep="")
+    }
+    return(c(mod, prefix))
+}
+
+shuffle_matrix = function(mat, seed, dim=c("col", "row")){
+    seed = as.integer(seed)
+    set.seed(seed)
+    if(dim == "col"){
+        perm = sample(ncol(mat))
+        return(mat[,perm])
+    }
+    perm = sample(nrow(mat))
+    return(mat[perm,])
+}
+
 matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
                             expr_locs, marker_locs=NULL,
-                            cis_dist=1e6, seed=NA){
+                            cis_dist=1e6, seed=NA, eseed=NA){
 
     prefix = .adjust_prefix(prefix)
     stopifnot(all(colnames(marker_data) == colnames(expr_data)))
@@ -352,7 +383,19 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     err.log("leaving:", sum(complete), "rows of data.")
 
     library(MatrixEQTL)
-    expr_complete = SlicedData$new(as.matrix(expr_data[,complete]))
+    # TODO: just shuffle the locs? or just the marker locs?
+    expr_complete = as.matrix(expr_data[,complete])
+    if(!is.na(eseed)){
+        eseed = as.integer(eseed)
+        expr_complete = shuffle_matrix(expr_complete, eseed);
+        if (eseed < 0){
+            mod = shuffle_matrix(mod, eseed, dim="row");
+            prefix = paste(prefix, "shuffle.expr_and_clin", colnames(mod)[ncol(mod)], ".", seed, ".", sep="")
+        } else {
+            prefix = paste(prefix, "shuffle.expr", colnames(mod)[ncol(mod)], ".", seed, ".", sep="")
+        }
+    }
+    expr_complete = SlicedData$new(expr_complete);
     expr_complete$ResliceCombined()
     rm(expr_data); gc(TRUE)
 
@@ -364,21 +407,10 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     err.log("snps using:", paste(dim(marker_complete), collapse=", ", sep=", "))
     err.log("using column:", colnames(mod)[ncol(mod)])
 
-    if(!is.na(seed)){
-        seed = as.integer(seed)
-        set.seed(seed)
-        perm = sample(nrow(mod))  
-        if(seed > 0){
-            err.log("shuffling clinical data, only last column")
-            mod[, ncol(mod)] = mod[perm, ncol(mod)]
-            prefix = paste(prefix, "shuffle.", colnames(mod)[ncol(mod)], ".", seed, ".", sep="")
-        }
-        else {
-            err.log("shuffling clinical data, all columns")
-            mod[, ] = mod[perm, ]
-            prefix = paste(prefix, "shuffle.all", seed, ".", sep="")
-        }
-    } 
+    mod_prefix = .shuffle_clinical(mod)
+    mod = mod_prefix[1]
+    prefix = mod_prefix[2]
+    
     write.matrix(mod, name="ID", file=paste(prefix, "model.txt", sep=""))
     clin = SlicedData$new(t(mod));
 
