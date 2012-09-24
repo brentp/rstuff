@@ -339,6 +339,7 @@ annotate_top_table = function(tt, probe_info="probe_lookups.txt"){
     if(is.na(seed)){
         return(mod)
     } 
+    rnm = rownames(mod)
     seed = as.integer(seed)
     set.seed(seed)
     perm = sample(nrow(mod))  
@@ -352,6 +353,7 @@ annotate_top_table = function(tt, probe_info="probe_lookups.txt"){
         mod[, ] = mod[perm, ]
         prefix = paste(prefix, "shuffle.all", seed, ".", sep="")
     }
+    rownames(mod) = rnm
     return(c(mod, prefix))
 }
 
@@ -368,7 +370,8 @@ shuffle_matrix = function(mat, seed, dim=c("col", "row")){
 
 matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
                             expr_locs, marker_locs=NULL,
-                            cis_dist=1e6, seed=NA, eseed=NA){
+                            cis_dist=1e6, seed=NA, eseed=NA,
+                            linear_cross=TRUE){
 
     prefix = .adjust_prefix(prefix)
     stopifnot(all(colnames(marker_data) == colnames(expr_data)))
@@ -389,9 +392,11 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
         eseed = as.integer(eseed)
         expr_complete = shuffle_matrix(expr_complete, eseed);
         if (eseed < 0){
+            err.log("shuffling expression and clinical")
             mod = shuffle_matrix(mod, eseed, dim="row");
             prefix = paste(prefix, "shuffle.expr_and_clin", colnames(mod)[ncol(mod)], ".", seed, ".", sep="")
         } else {
+            err.log("shuffling expression columns")
             prefix = paste(prefix, "shuffle.expr", colnames(mod)[ncol(mod)], ".", seed, ".", sep="")
         }
     }
@@ -449,7 +454,8 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
         cvrt = clin,
         output_file_name  = output_file_name_tra,
         pvOutputThreshold = 1e-5,
-        useModel = modelLINEAR_CROSS,
+        # http://www.bios.unc.edu/research/genomic_software/Matrix_eQTL/manual.html#models
+        useModel = ifelse(linear_cross, modelLINEAR_CROSS, modelLINEAR),
         errorCovariance = numeric(),
         verbose = TRUE,
         output_file_name.cis = output_file_name_cis,
