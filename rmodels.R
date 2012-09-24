@@ -370,7 +370,7 @@ shuffle_matrix = function(mat, seed, dim=c("col", "row")){
 
 matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
                             expr_locs, marker_locs=NULL,
-                            cis_dist=1e6, seed=NA, eseed=NA,
+                            cis_dist=1e6, seed=NA, gseed=NA,
                             linear_cross=TRUE){
 
     prefix = .adjust_prefix(prefix)
@@ -388,15 +388,22 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     library(MatrixEQTL)
     # TODO: just shuffle the locs? or just the marker locs?
     expr_complete = as.matrix(expr_data[,complete])
-    if(!is.na(eseed)){
-        eseed = as.integer(eseed)
-        expr_complete = shuffle_matrix(expr_complete, eseed);
-        if (eseed < 0){
-            err.log("shuffling expression and clinical")
-            mod = shuffle_matrix(mod, eseed, dim="row");
+    if(!is.na(gseed)){
+        # shuffle genotype columns.
+        gseed = as.integer(gseed)
+        # avoid copy by not calling function.
+
+        set.seed(gseed)
+        cn = colnames(marker_complete)
+        marker_complete = marker_complete[,sample(ncol(marker_complete))]
+        colnames(marker_complete) = cn
+
+        if (gseed < 0){
+            err.log("shuffling genotype and clinical")
+            mod = shuffle_matrix(mod, gseed, dim="row");
             prefix = paste(prefix, "shuffle.expr_and_clin", colnames(mod)[ncol(mod)], ".", seed, ".", sep="")
         } else {
-            err.log("shuffling expression columns")
+            err.log("shuffling genotype columns")
             prefix = paste(prefix, "shuffle.expr", colnames(mod)[ncol(mod)], ".", seed, ".", sep="")
         }
     }
