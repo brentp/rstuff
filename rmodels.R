@@ -337,7 +337,7 @@ annotate_top_table = function(tt, probe_info="probe_lookups.txt"){
 
 .shuffle_clinical = function(mod, seed, prefix){
     if(is.na(seed)){
-        return(mod)
+        return(c(mod, prefix))
     } 
     rnm = rownames(mod)
     seed = as.integer(seed)
@@ -361,11 +361,13 @@ shuffle_matrix = function(mat, seed, dim=c("col", "row")){
     seed = as.integer(seed)
     set.seed(seed)
     if(dim == "col"){
-        perm = sample(ncol(mat))
-        return(mat[,perm])
+        cn = colnames(mat)
+        mat = mat[,sample(ncol(mat))]
+        colnames(mat) = cn
+        return(mat)
     }
-    perm = sample(nrow(mat))
-    return(mat[perm,])
+    mat = mat[sample(nrow(mat)),]
+    return(mat)
 }
 
 matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
@@ -385,9 +387,11 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     err.log("removing:", sum(!complete), "because of missing data")
     err.log("leaving:", sum(complete), "rows of data.")
 
+    marker_complete = as.matrix(marker_data[,complete])
+    rm(marker_data); gc()
+
     library(MatrixEQTL)
     # TODO: just shuffle the locs? or just the marker locs?
-    expr_complete = as.matrix(expr_data[,complete])
     if(!is.na(gseed)){
         # shuffle genotype columns.
         gseed = as.integer(gseed)
@@ -400,29 +404,31 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
 
         if (gseed < 0){
             err.log("shuffling genotype and clinical")
-            mod = shuffle_matrix(mod, gseed, dim="row");
-            prefix = paste(prefix, "shuffle.expr_and_clin", colnames(mod)[ncol(mod)], ".", seed, ".", sep="")
+            mod = shuffle_matrix(mod, gseed, dim="col");
+            prefix = paste(prefix, "shuffle.genotype_and_clin", colnames(mod)[ncol(mod)], ".", gseed, ".", sep="")
         } else {
             err.log("shuffling genotype columns")
-            prefix = paste(prefix, "shuffle.expr", colnames(mod)[ncol(mod)], ".", seed, ".", sep="")
+            prefix = paste(prefix, "shuffle.genotype", colnames(mod)[ncol(mod)], ".", gseed, ".", sep="")
         }
     }
-    expr_complete = SlicedData$new(expr_complete);
+    expr_complete = SlicedData$new(as.matrix(expr_data[,complete]));
     expr_complete$ResliceCombined()
     rm(expr_data); gc(TRUE)
 
-    marker_complete = SlicedData$new(as.matrix(marker_data[,complete]))
+    marker_complete = SlicedData$new(marker_complete);
     marker_complete$ResliceCombined()
-    rm(marker_data); gc(TRUE)
 
     err.log("expr using:", paste(dim(expr_complete), collapse=", ", sep=", "))
     err.log("snps using:", paste(dim(marker_complete), collapse=", ", sep=", "))
-    err.log("using column:", colnames(mod)[ncol(mod)])
+    if(linear_cross){
+        err.log("using column:", colnames(mod)[ncol(mod)])
+    }
 
-    mod_prefix = .shuffle_clinical(mod)
-    mod = mod_prefix[1]
-    prefix = mod_prefix[2]
-    
+    if(!is.na(seed)){
+        mod_prefix = .shuffle_clinical(mod, seed, prefix)
+        mod = mod_prefix[1]
+        prefix = mod_prefix[2]
+    } 
     write.matrix(mod, name="ID", file=paste(prefix, "model.txt", sep=""))
     clin = SlicedData$new(t(mod));
 
@@ -443,6 +449,7 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
         snpspos = marker_locs
         rm(marker_locs); gc()
     }
+
     stopifnot(all(colnames(marker_complete) == colnames(clin)))
     stopifnot(all(colnames(expr_complete) == colnames(marker_complete)))
     stopifnot(nrow(snpspos) == nrow(marker_complete))
