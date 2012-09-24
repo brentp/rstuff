@@ -405,10 +405,10 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
         if (gseed < 0){
             err.log("shuffling genotype and clinical")
             mod = shuffle_matrix(mod, gseed, dim="col");
-            prefix = paste(prefix, "shuffle.genotype_and_clin", colnames(mod)[ncol(mod)], ".", gseed, ".", sep="")
+            prefix = paste(prefix, "shuffle.genotype_and_clin", ".", gseed, ".", sep="")
         } else {
             err.log("shuffling genotype columns")
-            prefix = paste(prefix, "shuffle.genotype", colnames(mod)[ncol(mod)], ".", gseed, ".", sep="")
+            prefix = paste(prefix, "shuffle.genotype", ".", gseed, ".", sep="")
         }
     }
     expr_complete = SlicedData$new(as.matrix(expr_data[,complete]));
