@@ -184,6 +184,7 @@ sva.limma.ez = function(data, clin, model,
     err.log("removing:", sum(!complete), "because of missing data")
     err.log("leaving:", sum(complete), "rows of data.")
     data_complete = as.matrix(data[,complete])
+    rm(data); gc()
 
     library(Matrix)
     mod = model.matrix(full_formula, data=clin)
@@ -213,6 +214,21 @@ sva.limma.ez = function(data, clin, model,
     return(fit)
 }
 
+# stolen from genefilter
+rowVars = function (x, ...) {
+    sqr = function(x) x * x
+    n = rowSums(!is.na(x))
+    n[n <= 1] = NA
+    return(rowSums(sqr(x - rowMeans(x, ...)), ...)/(n - 1))
+}
+
+remove_low_variance = function(mat, p_drop=0.25){
+    if(p_drop > 1){ p_drop = p_drop / 100 }
+    rvm = rowVars(mat)
+    mat[rvm > sort(rvm)[p_drop * length(rvm)],]
+}
+
+
 write.matrix = function(mat, file, name="probe", quote=FALSE, sep="\t", digits=3, ...){
     mat = cbind(rownames(mat), format(round(mat, digits=digits), digits=digits, trim=TRUE))
     colnames(mat)[1] = name
@@ -237,6 +253,7 @@ peer.limma.ez = function(data, clin, model,
     err.log("removing:", sum(!complete), "because of missing data")
     err.log("leaving:", sum(complete), "rows of data.")
     data_complete = as.matrix(data[,complete])
+    rm(data); gc()
 
     mod  = model.matrix(full_formula, data=clin)
 
@@ -462,18 +479,26 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     output_file_name_tra = paste(prefix, 'eQTL_tra.txt', sep="")
     output_file_name_cis = paste(prefix, 'eQTL_cis.txt', sep="")
 
+    thresh = 1.0
+    while(thresh * marker_complete$nRows() * expr_complete$nRows() > 1000000){
+        thresh = thresh / 10.0
+        # set to the maximum allowable threshold by MatrixeQTL must be a
+        # multipe of 10.
+    }
+    err.log("p-value threshold:", thresh)
+
     me = Matrix_eQTL_main(
         snps = marker_complete,
         gene = expr_complete,
         cvrt = clin,
         output_file_name  = output_file_name_tra,
-        pvOutputThreshold = 1e-5,
+        pvOutputThreshold = thresh,
         # http://www.bios.unc.edu/research/genomic_software/Matrix_eQTL/manual.html#models
         useModel = ifelse(linear_cross, modelLINEAR_CROSS, modelLINEAR),
         errorCovariance = numeric(),
         verbose = TRUE,
         output_file_name.cis = output_file_name_cis,
-        pvOutputThreshold.cis = 1e-5,
+        pvOutputThreshold.cis = thresh,
         snpspos = snpspos,
         genepos = genepos,
         cisDist = cis_dist,
