@@ -387,6 +387,46 @@ shuffle_matrix = function(mat, seed, dim=c("col", "row")){
     return(mat)
 }
 
+matrix.eQTL.post = function(prefix, expr_locs, marker_locs=NULL, anno_lib="BSgenome.Hsapiens.UCSC.hg19"){
+    tra = read.tab(paste(prefix, 'eQTL_tra.txt', sep=""))
+    cis = read.tab(paste(prefix, 'eQTL_cis.txt', sep=""))
+    
+    if(is.null(marker_locs)){
+        marker_locs = get_marker_locs(intersect(tra$SNP, cis$SNP))
+    }
+    # output snp_chrom snp_start snp_end expr_chrom expr_start expr_end
+    # cis_trans dist t-stat pval FDR expr_gene snp_stuff_from_chippeakanno.
+    library(ChIPpeakAnno)
+    library(anno_lib)
+    library(rtracklayer)
+
+# TODO: write separate annotate fn.
+
+    # http://www.stat.berkeley.edu/share/biolab/Courses/CIPF10/Data/lab3_solutions.r
+
+
+    #test.bed = data.frame(cbind(chrom = c("4", "6"),
+    #chromStart=c("100", "1000"),chromEnd=c("200", "1100"),
+    #name=c("peak1", "peak2")))
+    #test.rangedData = BED2RangedData(test.bed)
+    #as.data.frame(annotatePeakInBatch(test.rangedData,
+    #BED2RangedData() 
+
+}
+
+
+get_marker_locs = function(names){
+        chrm_snp = unlist(lapply(strsplit(as.character(names), ":", fixed=TRUE), 
+                          function(r){ r[1] }))
+        pos = unlist(lapply(strsplit(as.character(marker_locs), ":", fixed=TRUE),
+                          function(r){ as.numeric(r[2]) }))
+
+        snpspos = data.frame(snp=marker_locs, chrm_snp=chrm_snp, pos=pos)
+        return(snpspos)
+}
+
+
+
 matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
                             expr_locs, marker_locs=NULL,
                             cis_dist=1e6, seed=NA, gseed=NA,
@@ -449,23 +489,15 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     write.matrix(mod, name="ID", file=paste(prefix, "model.txt", sep=""))
     clin = SlicedData$new(t(mod));
 
-
     # get the location of the SNPs.
     if(is.null(marker_locs)){
-        marker_locs = rownames(marker_complete)
-        chrm_snp = unlist(lapply(strsplit(as.character(marker_locs), ":", fixed=TRUE), 
-                          function(r){ r[1] }))
-
-        pos = unlist(lapply(strsplit(as.character(marker_locs), ":", fixed=TRUE),
-                          function(r){ as.numeric(r[2]) }))
-
-        snpspos = data.frame(snp=marker_locs, chrm_snp=chrm_snp, pos=pos)
-        rm(marker_locs, pos, chrm_snp); gc()
+        snpspos = get_marker_locs(rownames(marker_complete));
     }
     else {
         snpspos = marker_locs
-        rm(marker_locs); gc()
+        rm(marker_locs);
     }
+    gc()
 
     stopifnot(all(colnames(marker_complete) == colnames(clin)))
     stopifnot(all(colnames(expr_complete) == colnames(marker_complete)))
@@ -510,5 +542,6 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     err.log("cis tests:", me$cis$ntests)
     err.log("trans tests:", me$trans$ntests)
     #err.log(summary(me))
+    me$prefix = prefix
     return(me)
 }
