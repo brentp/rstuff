@@ -1,6 +1,9 @@
 library(limma)
+library(gtools)
+
 options(scipen=15, stringsAsFactors=FALSE) # stop it from printing 1e6 instead of 1000000
 
+logit = defmacro(p, expr=log(p) - log(1 - p))
 
 .write.raw.meth = function(RGset, dp, out_prefix){
     raw = preprocessRaw(RGset)
@@ -21,8 +24,6 @@ read.tab = function(fname, sep="\t", header=TRUE, ...){
     clin = read.delim(fname, sep=sep, header=TRUE, comment.char="", ...)
     return(clin)
 }
-
-
 
 read.mat = function(fname, sep="\t"){ 
     # much faster way to read a matrix.
@@ -189,7 +190,6 @@ sva.limma.ez = function(data, clin, model,
     library(Matrix)
     mod = model.matrix(full_formula, data=clin)
 
-
     if(batch_correct){
         library(sva)
         mod0 = model.matrix(null_formula, data=clin)
@@ -240,7 +240,7 @@ write.matrix = function(mat, file, name="probe", quote=FALSE, sep="\t", digits=3
 peer.limma.ez = function(data, clin, model,
                 prefix="results/peer.limma.",
                 contrasts=NULL, probe_len=1,
-                batch_correct=TRUE){
+                batch_correct=5){
     #https://github.com/PMBio/peer/wiki/Tutorial
     coef = 2
 
@@ -256,16 +256,18 @@ peer.limma.ez = function(data, clin, model,
     rm(data); gc()
 
     mod  = model.matrix(full_formula, data=clin)
+    err.log("OK")
 
-    if(batch_correct){
-        peer_factors = run.peer(mod, t(data_complete), prefix)
+    if(as.logical(batch_correct)){
+        n_factors = as.integer(batch_correct)
+        peer_factors = run.peer(mod, t(data_complete), prefix, n_factors)
         modpeer = cbind(mod, peer_factors)
-        write.table(modpeer, sep="\t", row.names=F, file=paste(prefix, "mod.peer.txt", sep=""), quote=F)
+        write.table(modpeer, sep="\t", row.names=F, file=paste(prefix, "mod.peer.", n_factors, ".txt", sep=""), quote=F)
 
         # we remove the batch effects from the data, rather than including the
         # peers as covariates.
         data_complete = cleanY(data_complete, mod, peer_factors)
-        write.matrix(data_complete, file=paste(prefix, ".cleaned.y.txt", sep=""))
+        write.matrix(data_complete, file=paste(prefix, ".cleaned.", n_factors, ".y.txt", sep=""))
     }
 
     # including all peer factors, just include those before 1/alpha levels off?
@@ -274,7 +276,7 @@ peer.limma.ez = function(data, clin, model,
 }
 
 
-run.peer = function(mod, data_complete, prefix=NULL){
+run.peer = function(mod, data_complete, prefix=NULL, n_factors=5){
     library(peer)
     peer_obj = PEER()
     PEER_setCovariates(peer_obj, mod)
@@ -282,7 +284,7 @@ run.peer = function(mod, data_complete, prefix=NULL){
     PEER_setVarTolerance(peer_obj, 1e-9)
     PEER_setNmax_iterations(peer_obj, 1000)
     PEER_setPhenoMean(peer_obj, data_complete)
-    PEER_setNk(peer_obj, min(5, nrow(data_complete) - ncol(mod) - 1))
+    PEER_setNk(peer_obj, min(n_factors, nrow(data_complete) - ncol(mod) - 1))
     PEER_update(peer_obj)
     modpeer = PEER_getX(peer_obj)
     if(!is.null(prefix)){
@@ -393,6 +395,8 @@ matrix.eQTL.post = function(prefix, expr_locs, marker_locs=NULL, anno_lib="BSgen
     
     if(is.null(marker_locs)){
         marker_locs = get_marker_locs(intersect(tra$SNP, cis$SNP))
+        marker_locs$chromStart = marker_locs$pos - 1
+        marker_locs$chromEnd = marker_locs$pos
     }
     # output snp_chrom snp_start snp_end expr_chrom expr_start expr_end
     # cis_trans dist t-stat pval FDR expr_gene snp_stuff_from_chippeakanno.
@@ -421,7 +425,7 @@ get_marker_locs = function(names){
         pos = unlist(lapply(strsplit(as.character(marker_locs), ":", fixed=TRUE),
                           function(r){ as.numeric(r[2]) }))
 
-        snpspos = data.frame(snp=marker_locs, chrm_snp=chrm_snp, pos=pos)
+        snpspos = data.frame(snp=marker_locs, chrom=chrm_snp, pos=pos)
         return(snpspos)
 }
 
