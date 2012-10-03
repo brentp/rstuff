@@ -180,6 +180,7 @@ sva.limma.ez = function(data, clin, model,
     null_formula = get_null_model(model)
     err.log("null model:", null_formula)
 
+
     # remove any rows with na
     complete = complete.cases(clin[,attr(terms(full_formula), "term.labels")])
     err.log("removing:", sum(!complete), "because of missing data")
@@ -389,7 +390,7 @@ shuffle_matrix = function(mat, seed, dim=c("col", "row")){
     return(mat)
 }
 
-matrix.eQTL.post = function(prefix, expr_locs, marker_locs=NULL, anno_lib="BSgenome.Hsapiens.UCSC.hg19"){
+matrix.eQTL.post = function(prefix, expr_locs, marker_locs=NULL, anno_lib="BSgenome.Hsapiens.UCSC.hg18"){
     tra = read.tab(paste(prefix, 'eQTL_tra.txt', sep=""))
     cis = read.tab(paste(prefix, 'eQTL_cis.txt', sep=""))
     
@@ -397,12 +398,20 @@ matrix.eQTL.post = function(prefix, expr_locs, marker_locs=NULL, anno_lib="BSgen
         marker_locs = get_marker_locs(intersect(tra$SNP, cis$SNP))
         marker_locs$chromStart = marker_locs$pos - 1
         marker_locs$chromEnd = marker_locs$pos
+        marker_locs$name = marker_locs$SNP
     }
-    # output snp_chrom snp_start snp_end expr_chrom expr_start expr_end
+    # output: snp_chrom snp_start snp_end expr_chrom expr_start expr_end
     # cis_trans dist t-stat pval FDR expr_gene snp_stuff_from_chippeakanno.
     library(ChIPpeakAnno)
     library(anno_lib)
     library(rtracklayer)
+
+    rg = BED2RangedData(marker_locs)
+    anno = as.data.frame(annotatePeakInBatch(rg, Annotation=anno_lib, select="all"))
+
+
+
+
 
 # TODO: write separate annotate fn.
 
@@ -422,10 +431,10 @@ matrix.eQTL.post = function(prefix, expr_locs, marker_locs=NULL, anno_lib="BSgen
 get_marker_locs = function(names){
         chrm_snp = unlist(lapply(strsplit(as.character(names), ":", fixed=TRUE), 
                           function(r){ r[1] }))
-        pos = unlist(lapply(strsplit(as.character(marker_locs), ":", fixed=TRUE),
+        pos = unlist(lapply(strsplit(as.character(names), ":", fixed=TRUE),
                           function(r){ as.numeric(r[2]) }))
 
-        snpspos = data.frame(snp=marker_locs, chrom=chrm_snp, pos=pos)
+        snpspos = data.frame(snp=names, chrom=chrm_snp, pos=pos)
         return(snpspos)
 }
 
@@ -464,7 +473,7 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
         colnames(marker_complete) = cn
 
         if (gseed < 0){
-            err.log("shuffling genotype and clinical")
+            err.log("shuffling genotype with clinical")
             mod = shuffle_matrix(mod, gseed, dim="col");
             prefix = paste(prefix, "shuffle.genotype_and_clin", ".", gseed, ".", sep="")
         } else {
