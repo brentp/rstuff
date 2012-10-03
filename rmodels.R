@@ -517,7 +517,7 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     stopifnot(nrow(snpspos) == nrow(marker_complete))
 
     genepos = data.frame(geneid=expr_locs$probe, chrm_probe=expr_locs$chrom,
-                         s1=expr_locs$start, s2=expr_locs$end)
+                         start=expr_locs$start, end=expr_locs$end)
     rm(expr_locs)
     gc(TRUE)
 
@@ -556,5 +556,45 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     err.log("trans tests:", me$trans$ntests)
     #err.log(summary(me))
     me$prefix = prefix
+
+    .add_dist(output_file_name_cis, output_file_name_tra, snpspos, genepos, prefix)
     return(me)
+}
+
+.add_dist = function(fcis, ftrans, snpspos, genepos, prefix){
+    gene_chrom = paste(colnames(genepos)[2], "_gene", sep="")
+    gene_start = paste(colnames(genepos)[3], "_gene", sep="")
+    gene_end = paste(colnames(genepos)[4], "_gene", sep="")
+    snp_chrom = paste(colnames(snpspos)[2], "_snp", sep="")
+
+    qtls = read.tab(fcis)
+    out_names = colnames(qtls)
+
+    qtls$cis_tra = "cis"
+
+    trans = read.tab(ftrans)
+    trans$cis_tra = "tra"
+
+    qtls = rbind(qtls, trans)
+    rm(trans); gc()
+
+    output_file = paste(prefix, 'eQTL_ct_dist.txt', sep="")
+    # SNP gene t-stat p-value FDR
+    colnames(snpspos) = paste(colnames(snpspos), "_snp", sep="")
+    colnames(genepos) = paste(colnames(genepos), "_gene", sep="")
+
+    all_dat = merge(qtls, snpspos, by.x=1, by.y=1)
+    all_dat = merge(all_dat, genepos, by.x=2, by.y=1)
+
+    print(head(all_dat))
+    print(head(all_dat[,gene_chrom]))
+    print(head(all_dat[,snp_chrom]))
+    # apply(cbind(1:10, 2:11), 1, min)
+    all_dat$dist = apply(cbind(abs(all_dat$pos_snp - all_dat[,gene_start]), abs(all_dat$pos_snp - all_dat[,gene_end])), 1, min)
+    all_dat$dist[all_dat[,gene_chrom] != all_dat[,snp_chrom]] = NA
+    print(colnames(all_dat))
+
+    all_dat = all_dat[,c(out_names, "cis_tra", "dist")]
+    write.table(all_dat, file=output_file, row.names=FALSE, sep="\t", quote=FALSE)
+
 }
