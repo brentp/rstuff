@@ -297,6 +297,8 @@ run.peer = function(mod, data_complete, prefix=NULL, n_factors=5){
     return(modpeer[,(ncol(mod) + 1):(ncol(modpeer))])
 }
 
+
+
 limma.ez = function(data, mod, coef, contrasts, prefix, probe_len=1){
     fit = lmFit(data, mod)
     if(is.null(contrasts)){
@@ -435,6 +437,7 @@ get_marker_locs = function(names){
                           function(r){ as.numeric(r[2]) }))
 
         snpspos = data.frame(snp=names, chrom=chrm_snp, pos=pos)
+        write.table(snpspos, row.names=T, sep="\t", quote=F)
         return(snpspos)
 }
 
@@ -443,7 +446,8 @@ get_marker_locs = function(names){
 matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
                             expr_locs, marker_locs=NULL,
                             cis_dist=1e6, seed=NA, gseed=NA,
-                            linear_cross=TRUE){
+                            linear_cross=TRUE,
+                            snp_size=1){
 
     prefix = .adjust_prefix(prefix)
     stopifnot(all(colnames(marker_data) == colnames(expr_data)))
@@ -557,11 +561,12 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     #err.log(summary(me))
     me$prefix = prefix
 
-    .add_dist(output_file_name_cis, output_file_name_tra, snpspos, genepos, prefix)
+    .add_dist(output_file_name_cis, output_file_name_tra, snpspos, genepos, prefix, snp_size)
     return(me)
 }
 
-.add_dist = function(fcis, ftrans, snpspos, genepos, prefix){
+.add_dist = function(fcis, ftrans, snpspos, genepos, prefix, snp_size=0){
+    # snp_size accounts for when the snp is actually a probe...
     gene_chrom = paste(colnames(genepos)[2], "_gene", sep="")
     gene_start = paste(colnames(genepos)[3], "_gene", sep="")
     gene_end = paste(colnames(genepos)[4], "_gene", sep="")
@@ -586,13 +591,15 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     all_dat = merge(qtls, snpspos, by.x=1, by.y=1)
     all_dat = merge(all_dat, genepos, by.x=2, by.y=1)
 
-    print(head(all_dat))
-    print(head(all_dat[,gene_chrom]))
-    print(head(all_dat[,snp_chrom]))
-    # apply(cbind(1:10, 2:11), 1, min)
-    all_dat$dist = apply(cbind(abs(all_dat$pos_snp - all_dat[,gene_start]), abs(all_dat$pos_snp - all_dat[,gene_end])), 1, min)
+    dist_s = all_dat$pos_snp - all_dat[,gene_start]
+    dist_e = all_dat$pos_snp - all_dat[,gene_end]
+    dist_s1 = (all_dat$pos_snp + snp_size) - all_dat[,gene_start]
+    dist_e1 = (all_dat$pos_snp + snp_size) - all_dat[,gene_end]
+
+    all_dat$dist = apply(cbind(abs(dist_s), abs(dist_e), abs(dist_s1), abs(dist_e1)), 1, min)
+    all_dat$dist[(dist_s > 0 | dist_s1 > 0) & (dist_e < 0 | dist_e1 < 0)] = 0 # account for snp inside gene. set dist to 0
     all_dat$dist[all_dat[,gene_chrom] != all_dat[,snp_chrom]] = NA
-    print(colnames(all_dat))
+    #print(colnames(all_dat))
 
     all_dat = all_dat[,c(out_names, "cis_tra", "dist")]
     write.table(all_dat, file=output_file, row.names=FALSE, sep="\t", quote=FALSE)
