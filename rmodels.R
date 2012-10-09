@@ -91,7 +91,7 @@ normalize.charm = function(sample_description, out_prefix, id_col=1){
     ################################
     # remove arrays with low quality
     ################################
-    qual = qcReport(rawData, file="qc-report.pdf")
+    qual = qcReport(rawData, file=paste(out_prefix, "qc-report.pdf", sep=""))
     qc.min = 70
     rawData = rawData[,qual$pmSignal>=qc.min]
     qual=qual[qual$pmSignal>=qc.min,]
@@ -257,9 +257,8 @@ peer.limma.ez = function(data, clin, model,
     rm(data); gc()
 
     mod  = model.matrix(full_formula, data=clin)
-    err.log("OK")
 
-    if(as.logical(batch_correct)){
+    if(!is.na(batch_correct) && as.logical(batch_correct)){
         n_factors = as.integer(batch_correct)
         peer_factors = run.peer(mod, t(data_complete), prefix, n_factors)
         modpeer = cbind(mod, peer_factors)
@@ -270,7 +269,6 @@ peer.limma.ez = function(data, clin, model,
         data_complete = cleanY(data_complete, mod, peer_factors)
         write.matrix(data_complete, file=paste(prefix, ".cleaned.", n_factors, ".y.txt", sep=""))
     }
-
     # including all peer factors, just include those before 1/alpha levels off?
     fit = limma.ez(data_complete, mod, coef, contrasts, prefix, probe_len)
     return(fit)
@@ -437,7 +435,7 @@ get_marker_locs = function(names){
                           function(r){ as.numeric(r[2]) }))
 
         snpspos = data.frame(snp=names, chrom=chrm_snp, pos=pos)
-        write.table(snpspos, row.names=T, sep="\t", quote=F)
+        #write.table(snpspos, row.names=T, sep="\t", quote=F)
         return(snpspos)
 }
 
@@ -446,12 +444,13 @@ get_marker_locs = function(names){
 matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
                             expr_locs, marker_locs=NULL,
                             cis_dist=1e6, seed=NA, gseed=NA,
-                            linear_cross=TRUE,
+                            linear_cross=FALSE,
                             snp_size=1){
-
     prefix = .adjust_prefix(prefix)
+
     stopifnot(all(colnames(marker_data) == colnames(expr_data)))
     stopifnot(all(rownames(clinical) == colnames(expr_data)))
+
 
     full_formula = as.formula(model) 
     mod = as.matrix(model.matrix(full_formula, data=clinical))
@@ -485,6 +484,9 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
             prefix = paste(prefix, "shuffle.genotype", ".", gseed, ".", sep="")
         }
     }
+
+    print(dim(expr_data))
+    print(dim(expr_data[,complete]))
     expr_complete = SlicedData$new(as.matrix(expr_data[,complete]));
     expr_complete$ResliceCombined()
     rm(expr_data); gc(TRUE)
@@ -503,7 +505,9 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
         mod = mod_prefix[1]
         prefix = mod_prefix[2]
     } 
-    write.matrix(mod, name="ID", file=paste(prefix, "model.txt", sep=""))
+    if(ncol(mod) != 0){
+        write.matrix(mod, name="ID", file=paste(prefix, "model.txt", sep=""))
+    }
     clin = SlicedData$new(t(mod));
 
     # get the location of the SNPs.
@@ -515,8 +519,9 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
         rm(marker_locs);
     }
     gc()
-
-    stopifnot(all(colnames(marker_complete) == colnames(clin)))
+    if(nrow(clin) != 0){
+        stopifnot(all(colnames(marker_complete) == colnames(clin)))
+    }
     stopifnot(all(colnames(expr_complete) == colnames(marker_complete)))
     stopifnot(nrow(snpspos) == nrow(marker_complete))
 
@@ -542,12 +547,14 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
         cvrt = clin,
         output_file_name  = output_file_name_tra,
         pvOutputThreshold = thresh,
+        #pvOutputThreshold = 0,
         # http://www.bios.unc.edu/research/genomic_software/Matrix_eQTL/manual.html#models
         useModel = ifelse(linear_cross, modelLINEAR_CROSS, modelLINEAR),
         errorCovariance = numeric(),
         verbose = TRUE,
         output_file_name.cis = output_file_name_cis,
         pvOutputThreshold.cis = thresh,
+        #pvOutputThreshold.cis = 1,
         snpspos = snpspos,
         genepos = genepos,
         cisDist = cis_dist,
@@ -603,5 +610,5 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
 
     all_dat = all_dat[,c(out_names, "cis_tra", "dist")]
     write.table(all_dat, file=output_file, row.names=FALSE, sep="\t", quote=FALSE)
-
+    return(output_file)
 }
