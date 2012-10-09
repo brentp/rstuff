@@ -454,7 +454,12 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
 
     full_formula = as.formula(model) 
     mod = as.matrix(model.matrix(full_formula, data=clinical))
-    mod = mod[,!colnames(mod) %in% "(Intercept)"]
+    cnames = colnames(mod)
+    rnames = rownames(mod)
+    n = sum(!cnames %in% "(Intercept)")
+    mod = matrix(mod[,!cnames %in% "(Intercept)"], nrow=nrow(mod), ncol=n)
+    colnames(mod) = cnames[!cnames %in% "(Intercept)"]
+    rownames(mod) = rnames
 
     complete = complete.cases(clinical[,attr(terms(full_formula), "term.labels")])
     err.log("removing:", sum(!complete), "because of missing data")
@@ -485,8 +490,6 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
         }
     }
 
-    print(dim(expr_data))
-    print(dim(expr_data[,complete]))
     expr_complete = SlicedData$new(as.matrix(expr_data[,complete]));
     expr_complete$ResliceCombined()
     rm(expr_data); gc(TRUE)
@@ -606,7 +609,6 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     all_dat$dist = apply(cbind(abs(dist_s), abs(dist_e), abs(dist_s1), abs(dist_e1)), 1, min)
     all_dat$dist[(dist_s > 0 | dist_s1 > 0) & (dist_e < 0 | dist_e1 < 0)] = 0 # account for snp inside gene. set dist to 0
     all_dat$dist[all_dat[,gene_chrom] != all_dat[,snp_chrom]] = NA
-    #print(colnames(all_dat))
 
     all_dat = all_dat[,c(out_names, "cis_tra", "dist")]
     write.table(all_dat, file=output_file, row.names=FALSE, sep="\t", quote=FALSE)
