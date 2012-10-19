@@ -221,7 +221,7 @@ sva.limma.ez = function(data, clin, model,
                         "mod.sva.txt", sep=""), quote=FALSE)
 
         data_complete = cleanY(data_complete, mod, svobj$sv)
-        write.matrix(data_complete, file=paste(prefix, ".cleaned.y.txt", sep=""))
+        write.matrix(data_complete, file=paste(prefix, "cleaned.y.txt", sep=""))
     }
 
     fit = limma.ez(data_complete, mod, coef, contrasts, prefix, probe_len)
@@ -281,7 +281,7 @@ peer.limma.ez = function(data, clin, model,
         # we remove the batch effects from the data, rather than including the
         # peers as covariates.
         data_complete = cleanY(data_complete, mod, peer_factors)
-        write.matrix(data_complete, file=paste(prefix, ".cleaned.", n_factors, ".y.txt", sep=""))
+        write.matrix(data_complete, file=paste(prefix, "cleaned.", n_factors, ".y.txt", sep=""))
     }
     # including all peer factors, just include those before 1/alpha levels off?
     fit = limma.ez(data_complete, mod, coef, contrasts, prefix, probe_len)
@@ -293,15 +293,17 @@ run.peer = function(mod, data_complete, prefix=NULL, n_factors=5){
     library(peer)
     peer_obj = PEER()
     PEER_setCovariates(peer_obj, mod)
-    PEER_setTolerance(peer_obj, 1e-9)
-    PEER_setVarTolerance(peer_obj, 1e-9)
+    PEER_setTolerance(peer_obj, 1e-10)
+    PEER_setVarTolerance(peer_obj, 1e-10)
     PEER_setNmax_iterations(peer_obj, 1000)
     PEER_setPhenoMean(peer_obj, data_complete)
-    PEER_setNk(peer_obj, min(n_factors, nrow(data_complete) - ncol(mod) - 1))
+    nK = min(n_factors, nrow(data_complete) - ncol(mod) - 1)
+    PEER_setNk(peer_obj, nK)
+    err.log("set number of factors to infer as", nK)
     PEER_update(peer_obj)
     modpeer = PEER_getX(peer_obj)
     if(!is.null(prefix)){
-        f = paste(prefix, "peer.alpha.txt", sep=".")
+        f = paste(prefix, "peer.alpha.txt", sep="")
         write.table(PEER_getAlpha(peer_obj), file=f, row.names=F, sep="\t")
     }
     colnames(modpeer) = c(colnames(mod), paste('peer_', 1:(ncol(modpeer) - ncol(mod)), sep=""))
@@ -342,7 +344,7 @@ limma.ez = function(data, mod, coef, contrasts, prefix, probe_len=1){
 
         tt = data.frame(chrom=chroms, start=starts, end=ends, tt[,colnames(tt) != "ID"])
 
-        write.table(tt, row.names=F, sep="\t", quote=F, file=paste(prefix, ".", c, ".pvals.bed", sep=""))
+        write.table(tt, row.names=F, sep="\t", quote=F, file=paste(prefix, c, ".pvals.bed", sep=""))
     }
     return(fit)
 }
