@@ -41,6 +41,19 @@ read.mat = function(fname, sep="\t"){
 }
 
 
+shared_rows_cols = function(a, b, acolname=NA){
+    bnames = colnames(b)
+    if(is.na(acolname)){
+        anames = rownames(a)
+    } else {
+        anames = a[,acolname]
+    }
+    shared = intersect(anames, bnames)
+    if(length(shared) == 0){ stop("no shared ids") }
+    return(shared)
+}
+
+
 
 normalize.450k = function(fclin, out_prefix, base_path, id_col=1){
     library(minfi)
@@ -257,6 +270,7 @@ peer.limma.ez = function(data, clin, model,
     rm(data); gc()
 
     mod  = model.matrix(full_formula, data=clin)
+
 
     if(!is.na(batch_correct) && as.logical(batch_correct)){
         n_factors = as.integer(batch_correct)
