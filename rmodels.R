@@ -630,8 +630,21 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     return(output_file)
 }
 
+ff = function(r0, r1, df0, df1, p=False){
+    n = ncol(r0)
+    stopifnot(n == ncol(r1))
+    rss0 = rowSums(r0 * r0) 
+    rss1 = rowSums(r1 * r1)
+    fstats = ((rss0 - rss1)/(df1 - df0))/(rss1/(n - df1))
+    if(!p){ 
+        return(fstats)
+    }
+    p <- 1 - pf(fstats, df1 = (df1 - df0), df2 = (n - df1))
+    return(cbind(fstats, p))
+}
 
-freedman_lane_permute = function(y, model_matrix, cols, use_beta=FALSE, seed=NA){
+
+freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
    # cols are the columns of interest in the design matrix.
    # if only a single column is specified, the t-stat is used. otherwise
    # the F-statistic is used.
@@ -640,77 +653,63 @@ freedman_lane_permute = function(y, model_matrix, cols, use_beta=FALSE, seed=NA)
    # of shuffling residuals from the reduced model.
    # TODO:
    # if use_beta = True, then it utilizes irrizary et al's bump hunting
-   if(!is.na(seed)){ set.seed(seed) }
-   proportion = 0.02
-   design = model_matrix
-   fit = eBayes(lmFit(y, design), proportion=proportion)
+   design = mod
+   reduced_design = mod0
 
-   reduced_design = design[,!colnames(design) %in% cols]
-   reduced_fit = eBayes(lmFit(y, reduced_design))
-   reduced_resid = residuals(reduced_fit, y)
-   reduced_fitted = fitted(reduced_fit, y)
-   rm(reduced_fit); gc()
+   fit0 = lm.fit(mod0, t(y))
+   fit = lm.fit(mod, t(y))
+   reduced_fitted = t(fit0$fitted.values)
+   reduced_resid = t(fit0$residuals)
 
-   tt = topTable(fit, coef=cols, n=Inf, sort.by="none")
-   rm(fit); gc()
-
-   if(use_beta){
-       stat_orig = abs(fit$coef[,cols])
-   } else {
-       stat_col = ifelse(length(cols) > 1, "F", "t")
-       stat_orig = abs(tt[,stat_col])
-   }
-
-
+   # TODO: if use_beta, just grab fit0$coef
+   stat_orig = ff(t(fit0$residuals), t(fit$residuals), ncol(mod0), ncol(mod), p=FALSE)
+   
    n_cols = ncol(reduced_resid)
    n_greater = rep(0, nrow(y))
    n_perms = rep(0, nrow(y))
    g_subset = rep(TRUE, nrow(y))
-   cutoff = 0.20
+   cutoff = 0.25
    # THIS sections calls the simulation on shuffled data. after each loop.
    # it takes only the subset that has a perm_p below some less stringent cutoff
    # so it does not waste time retesting probes that have a high p-value after 25
    # sims.
-   for (n_perm in c(25, 250, 1000, 1650, 5000)){
-           print(paste(cutoff, n_perm))
+   for (n_perm in c(25, 150, 350, 1000, 1650, 5000)){
+           print(sprintf("performing %i shufflings of %i rows then limiting to < %.4g",n_perm, sum(g_subset), cutoff))
            n_greater[g_subset] = .freedman_lane_sim(reduced_fitted[g_subset,],
                                                     reduced_resid[g_subset,],
                                                     design,
-                                                    cols,
+                                                    reduced_design,
                                                     n_greater[g_subset],
                                                     n_perm,
                                                     stat_orig[g_subset],
-                                                    proportion,
                                                     use_beta)
            n_perms[g_subset] = n_perms[g_subset] + n_perm
-           if((sum(n_greater[g_subset] < cutoff)) == 0){ break }
-           g_subset = g_subset & (n_greater < cutoff)
-           proportion = proportion * 4
+           # n_great / n_perms is the simulated p-value
+           if((sum((n_greater / n_perms) < cutoff)) == 0){ break }
+           g_subset = g_subset & ((n_greater / n_perms) < cutoff)
            cutoff = cutoff / 2
 
    }
    sim_p = as.matrix((1 + n_greater) / (1 + n_perms), ncol=1)
-   return(cbind(tt, sim_p))
+   rownames(sim_p) = rownames(dat)
+   return(sim_p)
 }
 
-.freedman_lane_sim = function(reduced_fitted, reduced_resid, design, cols,
-                              n_greater, n_perms, stat_orig, proportion,
-                                                                 use_beta){
+.freedman_lane_sim = function(reduced_fitted, reduced_resid, design, reduced_design,
+                              n_greater, n_perms, stat_orig, use_beta){
    # number of simulations with a stat greater than the observed.
    nc = ncol(reduced_resid)
-   stat_col = ifelse(length(cols) > 1, "F", "t")
-   print(dim(reduced_resid)) 
+
+   reduced_resid = t(reduced_resid)
+   reduced_fitted = t(reduced_fitted)
    
    for(i in 1:n_perms){
-      ystar = reduced_fitted + reduced_resid[, sample(1:nc)]
-      if(use_beta){
-          fit_sim = lmFit(ystar, design)
-          n_greater = n_greater + (abs(fit_sim$coef[,cols]) > stat_orig)
-      } else {
-          fit_sim = eBayes(lmFit(ystar, design), proportion=proportion)
-          tt_sim = topTable(fit_sim, coef=cols, n=Inf, sort.by="none")
-          n_greater = n_greater + (abs(tt_sim[,stat_col]) > stat_orig)
-      }
+      ystar = reduced_fitted + reduced_resid[sample(1:nc),]
+      fit = lm.fit(design, ystar)
+      fit0 = lm.fit(reduced_design, ystar)
+      f = ff(t(fit0$residuals), t(fit$residuals),
+                 ncol(reduced_design), ncol(design), p=FALSE)
+      n_greater = n_greater + (abs(f) > stat_orig)
    }
    return(n_greater)
 }
