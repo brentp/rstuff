@@ -645,14 +645,8 @@ ff = function(r0, r1, df0, df1, p=False){
 
 
 freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
-   # cols are the columns of interest in the design matrix.
-   # if only a single column is specified, the t-stat is used. otherwise
-   # the F-statistic is used.
-   # Returns a fit object with the simulated p-values using
-   #  the Freedman-Lane method
-   # of shuffling residuals from the reduced model.
-   # TODO:
-   # if use_beta = True, then it utilizes irrizary et al's bump hunting
+   # if use_beta = True, then it runs compares the simulated parameter
+   # estimate to the observed. oterhwise, it compares f-statistics.
    design = mod
    reduced_design = mod0
 
@@ -665,7 +659,7 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
            if(length(use_beta) > 1){
                stop("can only have a single covariate if use_beta is True")
            }
-	   stat_orig = fit$coef[use_beta,]
+	   stat_orig = abs(fit$coef[use_beta,])
            # actually not reduced residuals, but leaving name for now...
            # use residuals from full model and fit from null model.
            reduced_resid = t(fit$residuals)
@@ -679,13 +673,13 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
    n_greater = rep(0, nrow(y))
    n_perms = rep(0, nrow(y))
    g_subset = rep(TRUE, nrow(y))
-   cutoff = 0.40
+   cutoff = 0.20
    # THIS sections calls the simulation on shuffled data. after each loop.
    # it takes only the subset that has a perm_p below some less stringent cutoff
    # so it does not waste time retesting probes that have a high p-value after 25
    # sims.
-   for (n_perm in c(35, 100, 200, 350, 1000, 1650, 5000)){
-       print(sprintf("performing %i shufflings of %i rows then limiting to < %.4g",n_perm, sum(g_subset), cutoff))
+   for (n_perm in c(50, 100, 200, 350, 1000, 1650, 5000)){
+       write(sprintf("performing %i shufflings of %i rows then limiting to < %.4g",n_perm, sum(g_subset), cutoff), stderr())
        n_greater[g_subset] = .freedman_lane_sim(reduced_fitted[g_subset,],
                                                 reduced_resid[g_subset,],
                                                 design,
@@ -704,7 +698,12 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
        cutoff = cutoff / 2
 
    }
-   sim_p = as.matrix((1 + n_greater) / (1 + n_perms), ncol=1)
+   sim_p = data.frame(
+          sim_p=as.matrix((1 + n_greater) / (1 + n_perms), ncol=1),
+          n_greater=n_greater,
+          n_perms=n_perms
+   )
+
    rownames(sim_p) = rownames(dat)
    return(sim_p)
 }
