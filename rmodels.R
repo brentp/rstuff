@@ -656,19 +656,29 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
    design = mod
    reduced_design = mod0
 
-   fit0 = lm.fit(mod0, t(y))
-   fit = lm.fit(mod, t(y))
-   reduced_fitted = t(fit0$fitted.values)
-   reduced_resid = t(fit0$residuals)
 
-   # TODO: if use_beta, just grab fit0$coef
-   stat_orig = ff(t(fit0$residuals), t(fit$residuals), ncol(mod0), ncol(mod), p=FALSE)
+   if(use_beta){
+
+	   fit = lm.fit(mod, t(y))
+	   stat_orig = fit$coef
+
+   } else {
+	   fit0 = lm.fit(mod0, t(y))
+	   reduced_fitted = t(fit0$fitted.values)
+	   reduced_resid = t(fit0$residuals)
+	   rm(fit0)
+
+	   # TODO: if use_beta, just grab fit$coef
+	   fit = lm.fit(mod, t(y))
+	   stat_orig = ff(reduced_resid, t(fit$residuals), ncol(mod0), ncol(mod), p=FALSE)
+	   rm(fit)
+   }
    
    n_cols = ncol(reduced_resid)
    n_greater = rep(0, nrow(y))
    n_perms = rep(0, nrow(y))
    g_subset = rep(TRUE, nrow(y))
-   cutoff = 0.25
+   cutoff = 0.20
    # THIS sections calls the simulation on shuffled data. after each loop.
    # it takes only the subset that has a perm_p below some less stringent cutoff
    # so it does not waste time retesting probes that have a high p-value after 25
