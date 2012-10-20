@@ -640,7 +640,7 @@ ff = function(r0, r1, df0, df1, p=False){
         return(fstats)
     }
     p <- 1 - pf(fstats, df1 = (df1 - df0), df2 = (n - df1))
-    return(cbind(fstats, p))
+    return(data.frame(fstats=fstats, p=p))
 }
 
 
@@ -663,11 +663,14 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
            # actually not reduced residuals, but leaving name for now...
            # use residuals from full model and fit from null model.
            reduced_resid = t(fit$residuals)
+           asym = ff(t(fit0$residuals), reduced_resid, ncol(mod0), ncol(mod), p=TRUE)
+           asym$beta = stat_orig
    } else {
        reduced_resid = t(fit0$residuals)
-       stat_orig = ff(reduced_resid, t(fit$residuals), ncol(mod0), ncol(mod), p=FALSE)
+       asym = ff(reduced_resid, t(fit$residuals), ncol(mod0), ncol(mod), p=TRUE)
+       stat_orig = asym$fstats
    }
-   rm(fit0, fit)
+   rm(fit0, fit); gc()
    
    n_cols = ncol(reduced_resid)
    n_greater = rep(0, nrow(y))
@@ -678,8 +681,9 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
    # it takes only the subset that has a perm_p below some less stringent cutoff
    # so it does not waste time retesting probes that have a high p-value after 25
    # sims.
-   for (n_perm in c(50, 100, 200, 350, 1000, 1650, 5000)){
+   for (n_perm in c(50, 150, 400, 750, 1000, 2000, 4000)){
        write(sprintf("performing %i shufflings of %i rows then limiting to < %.4g",n_perm, sum(g_subset), cutoff), stderr())
+       t = Sys.time()
        n_greater[g_subset] = .freedman_lane_sim(reduced_fitted[g_subset,],
                                                 reduced_resid[g_subset,],
                                                 design,
@@ -696,12 +700,15 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
        g_subset = g_subset & ((n_greater / n_perms) < cutoff)
        # the cutoff becomes more stringent each time.
        cutoff = cutoff / 2
+       write(Sys.time() - t, stderr())
 
    }
    sim_p = data.frame(
           sim_p=as.matrix((1 + n_greater) / (1 + n_perms), ncol=1),
           n_greater=n_greater,
-          n_perms=n_perms
+          n_perms=n_perms,
+          asym_p=asym$p,
+          F=asym$fstats
    )
 
    rownames(sim_p) = rownames(dat)
