@@ -631,7 +631,7 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
 }
 
 
-freedman_lane_permute = function(y, model_matrix, cols){
+freedman_lane_permute = function(y, model_matrix, cols, use_beta=FALSE){
    # cols are the columns of interest in the design matrix.
    # if only a single column is specified, the t-stat is used. otherwise
    # the F-statistic is used.
@@ -650,12 +650,17 @@ freedman_lane_permute = function(y, model_matrix, cols){
    reduced_fitted = fitted(reduced_fit, y)
    rm(reduced_fit); gc()
 
-   stat_col = ifelse(length(cols) > 1, "F", "t")
    tt = topTable(fit, coef=cols, n=Inf, sort.by="none")
    rm(fit); gc()
 
-   stat_orig = abs(tt[,stat_col])
-   
+   if(use_beta){
+       stat_orig = abs(fit$coef[,cols])
+   } else {
+       stat_col = ifelse(length(cols) > 1, "F", "t")
+       stat_orig = abs(tt[,stat_col])
+   }
+
+
    n_cols = ncol(reduced_resid)
    n_greater = rep(0, nrow(y))
    n_perms = rep(0, nrow(y))
@@ -665,7 +670,7 @@ freedman_lane_permute = function(y, model_matrix, cols){
    # it takes only the subset that has a perm_p below some less stringent cutoff
    # so it does not waste time retesting probes that have a high p-value after 25
    # sims.
-   for (n_perm in c(25, 80, 240, 720, 1650, 5000)){
+   for (n_perm in c(25, 80, 240, 920, 1650, 5000)){
            print(paste(cutoff, n_perm))
            n_greater[g_subset] = .freedman_lane_sim(reduced_fitted[g_subset,],
                                                     reduced_resid[g_subset,],
@@ -674,19 +679,20 @@ freedman_lane_permute = function(y, model_matrix, cols){
                                                     n_greater[g_subset],
                                                     n_perm,
                                                     stat_orig[g_subset],
-                                                    proportion)
+                                                    proportion,
+                                                    use_beta)
            n_perms[g_subset] = n_perms[g_subset] + n_perm
            if((sum(n_greater[g_subset] < cutoff)) == 0){ break }
-	   g_subset = g_subset & (n_greater < cutoff)
+           g_subset = g_subset & (n_greater < cutoff)
            proportion = proportion * 2.0
            cutoff = cutoff / 2
-         
+
    }
    sim_p = as.matrix((1 + n_greater) / (1 + n_perms), ncol=1)
    return(cbind(tt, sim_p))
 }
 
-.freedman_lane_sim = function(reduced_fitted, reduced_resid, design, cols, n_greater, n_perms, stat_orig, proportion){
+.freedman_lane_sim = function(reduced_fitted, reduced_resid, design, cols, n_greater, n_perms, stat_orig, proportion, use_beta){
    # number of simulations with a stat greater than the observed.
    nc = ncol(reduced_resid)
    stat_col = ifelse(length(cols) > 1, "F", "t")
@@ -694,9 +700,14 @@ freedman_lane_permute = function(y, model_matrix, cols){
    
    for(i in 1:n_perms){
       ystar = reduced_fitted + reduced_resid[, sample(1:nc)]
-      fit_sim = eBayes(lmFit(ystar, design), proportion=proportion)
-      tt_sim = topTable(fit_sim, coef=cols, n=Inf, sort.by="none")
-      n_greater = n_greater + (abs(tt_sim[,stat_col]) > stat_orig)
+      if(use_beta){
+          fit_sim = lmFit(ystar, design)
+          n_greater = n_greater + (abs(fit_sim$coef[,cols]) > stat_orig)
+      } else {
+          fit_sim = eBayes(lmFit(ystar, design), proportion=proportion)
+          tt_sim = topTable(fit_sim, coef=cols, n=Inf, sort.by="none")
+          n_greater = n_greater + (abs(tt_sim[,stat_col]) > stat_orig)
+      }
    }
    return(n_greater)
 }
