@@ -631,7 +631,7 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
 }
 
 
-freedman_lane_permute = function(y, model_matrix, cols, use_beta=FALSE){
+freedman_lane_permute = function(y, model_matrix, cols, use_beta=FALSE, seed=NA){
    # cols are the columns of interest in the design matrix.
    # if only a single column is specified, the t-stat is used. otherwise
    # the F-statistic is used.
@@ -640,6 +640,7 @@ freedman_lane_permute = function(y, model_matrix, cols, use_beta=FALSE){
    # of shuffling residuals from the reduced model.
    # TODO:
    # if use_beta = True, then it utilizes irrizary et al's bump hunting
+   if(!is.na(seed)){ set.seed(seed) }
    proportion = 0.02
    design = model_matrix
    fit = eBayes(lmFit(y, design), proportion=proportion)
@@ -670,7 +671,7 @@ freedman_lane_permute = function(y, model_matrix, cols, use_beta=FALSE){
    # it takes only the subset that has a perm_p below some less stringent cutoff
    # so it does not waste time retesting probes that have a high p-value after 25
    # sims.
-   for (n_perm in c(25, 80, 240, 920, 1650, 5000)){
+   for (n_perm in c(25, 250, 1000, 1650, 5000)){
            print(paste(cutoff, n_perm))
            n_greater[g_subset] = .freedman_lane_sim(reduced_fitted[g_subset,],
                                                     reduced_resid[g_subset,],
@@ -684,7 +685,7 @@ freedman_lane_permute = function(y, model_matrix, cols, use_beta=FALSE){
            n_perms[g_subset] = n_perms[g_subset] + n_perm
            if((sum(n_greater[g_subset] < cutoff)) == 0){ break }
            g_subset = g_subset & (n_greater < cutoff)
-           proportion = proportion * 2.0
+           proportion = proportion * 4
            cutoff = cutoff / 2
 
    }
@@ -692,7 +693,9 @@ freedman_lane_permute = function(y, model_matrix, cols, use_beta=FALSE){
    return(cbind(tt, sim_p))
 }
 
-.freedman_lane_sim = function(reduced_fitted, reduced_resid, design, cols, n_greater, n_perms, stat_orig, proportion, use_beta){
+.freedman_lane_sim = function(reduced_fitted, reduced_resid, design, cols,
+                              n_greater, n_perms, stat_orig, proportion,
+                                                                 use_beta){
    # number of simulations with a stat greater than the observed.
    nc = ncol(reduced_resid)
    stat_col = ifelse(length(cols) > 1, "F", "t")
