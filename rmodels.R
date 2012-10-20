@@ -656,48 +656,52 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
    design = mod
    reduced_design = mod0
 
+   fit0 = lm.fit(mod0, t(y))
+   fit = lm.fit(mod, t(y))
+   reduced_fitted = t(fit0$fitted.values)
 
    if(use_beta){
-
-	   fit = lm.fit(mod, t(y))
-	   stat_orig = fit$coef
-
+           use_beta = setdiff(colnames(mod), colnames(mod0))
+           if(length(use_beta) > 1){
+               stop("can only have a single covariate if use_beta is True")
+           }
+	   stat_orig = fit$coef[use_beta,]
+           # actually not reduced residuals, but leaving name for now...
+           # use residuals from full model and fit from null model.
+           reduced_resid = t(fit$residuals)
    } else {
-	   fit0 = lm.fit(mod0, t(y))
-	   reduced_fitted = t(fit0$fitted.values)
-	   reduced_resid = t(fit0$residuals)
-	   rm(fit0)
-
-	   # TODO: if use_beta, just grab fit$coef
-	   fit = lm.fit(mod, t(y))
-	   stat_orig = ff(reduced_resid, t(fit$residuals), ncol(mod0), ncol(mod), p=FALSE)
-	   rm(fit)
+       reduced_resid = t(fit0$residuals)
+       stat_orig = ff(reduced_resid, t(fit$residuals), ncol(mod0), ncol(mod), p=FALSE)
    }
+   rm(fit0, fit)
    
    n_cols = ncol(reduced_resid)
    n_greater = rep(0, nrow(y))
    n_perms = rep(0, nrow(y))
    g_subset = rep(TRUE, nrow(y))
-   cutoff = 0.20
+   cutoff = 0.40
    # THIS sections calls the simulation on shuffled data. after each loop.
    # it takes only the subset that has a perm_p below some less stringent cutoff
    # so it does not waste time retesting probes that have a high p-value after 25
    # sims.
-   for (n_perm in c(25, 150, 350, 1000, 1650, 5000)){
-           print(sprintf("performing %i shufflings of %i rows then limiting to < %.4g",n_perm, sum(g_subset), cutoff))
-           n_greater[g_subset] = .freedman_lane_sim(reduced_fitted[g_subset,],
-                                                    reduced_resid[g_subset,],
-                                                    design,
-                                                    reduced_design,
-                                                    n_greater[g_subset],
-                                                    n_perm,
-                                                    stat_orig[g_subset],
-                                                    use_beta)
-           n_perms[g_subset] = n_perms[g_subset] + n_perm
-           # n_great / n_perms is the simulated p-value
-           if((sum((n_greater / n_perms) < cutoff)) == 0){ break }
-           g_subset = g_subset & ((n_greater / n_perms) < cutoff)
-           cutoff = cutoff / 2
+   for (n_perm in c(35, 100, 200, 350, 1000, 1650, 5000)){
+       print(sprintf("performing %i shufflings of %i rows then limiting to < %.4g",n_perm, sum(g_subset), cutoff))
+       n_greater[g_subset] = .freedman_lane_sim(reduced_fitted[g_subset,],
+                                                reduced_resid[g_subset,],
+                                                design,
+                                                reduced_design,
+                                                n_greater[g_subset],
+                                                n_perm,
+                                                stat_orig[g_subset],
+                                                use_beta)
+       n_perms[g_subset] = n_perms[g_subset] + n_perm
+       # n_great / n_perms is the simulated p-value
+       if((sum((n_greater / n_perms) < cutoff)) == 0){ break }
+       # for the next iteration, we only care about probes that
+       # have a current simulated p-value less than the cutoff
+       g_subset = g_subset & ((n_greater / n_perms) < cutoff)
+       # the cutoff becomes more stringent each time.
+       cutoff = cutoff / 2
 
    }
    sim_p = as.matrix((1 + n_greater) / (1 + n_perms), ncol=1)
@@ -716,10 +720,15 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
    for(i in 1:n_perms){
       ystar = reduced_fitted + reduced_resid[sample(1:nc),]
       fit = lm.fit(design, ystar)
-      fit0 = lm.fit(reduced_design, ystar)
-      f = ff(t(fit0$residuals), t(fit$residuals),
+      if(use_beta != "FALSE"){
+          # we have changed use_beta to the name of the variable to extract.
+          n_greater = n_greater + (abs(fit$coef[use_beta,]) > stat_orig)
+      } else {
+          fit0 = lm.fit(reduced_design, ystar)
+          f = ff(t(fit0$residuals), t(fit$residuals),
                  ncol(reduced_design), ncol(design), p=FALSE)
-      n_greater = n_greater + (abs(f) > stat_orig)
+          n_greater = n_greater + (abs(f) > stat_orig)
+      }
    }
    return(n_greater)
 }
