@@ -644,6 +644,8 @@ ff = function(r0, r1, df0, df1, p=False){
 }
 
 
+# TODO: also see this
+# http://www.plosgenetics.org/article/info%3Adoi%2F10.1371%2Fjournal.pgen.1000456
 freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
    # if use_beta = True, then it runs compares the simulated parameter
    # estimate to the observed. oterhwise, it compares f-statistics.
@@ -722,7 +724,9 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
 
    reduced_resid = t(reduced_resid)
    reduced_fitted = t(reduced_fitted)
-   
+
+   pb = txtProgressBar(min = 0, max = n_perms, style = 3)
+
    for(i in 1:n_perms){
       ystar = reduced_fitted + reduced_resid[sample(1:nc),]
       fit = lm.fit(design, ystar)
@@ -735,6 +739,9 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
                  ncol(reduced_design), ncol(design), p=FALSE)
           n_greater = n_greater + (abs(f) > stat_orig)
       }
+      setTxtProgressBar(pb, i)
+
    }
+   close(pb)
    return(n_greater)
 }
