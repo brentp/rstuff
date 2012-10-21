@@ -630,7 +630,7 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     return(output_file)
 }
 
-ff = function(r0, r1, df0, df1, p=False){
+ff = function(r0, r1, df0, df1, p=FALSE){
     n = ncol(r0)
     stopifnot(n == ncol(r1))
     rss0 = rowSums(r0 * r0) 
@@ -661,7 +661,7 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
            if(length(use_beta) > 1){
                stop("can only have a single covariate if use_beta is True")
            }
-	   stat_orig = abs(fit$coef[use_beta,])
+           stat_orig = abs(fit$coef[use_beta,])
            # actually not reduced residuals, but leaving name for now...
            # use residuals from full model and fit from null model.
            reduced_resid = t(fit$residuals)
@@ -683,7 +683,7 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
    # it takes only the subset that has a perm_p below some less stringent cutoff
    # so it does not waste time retesting probes that have a high p-value after 25
    # sims.
-   for (n_perm in c(50, 150, 400, 750, 1000, 2000, 4000)){
+   for (n_perm in c(50, 200, 400, 750, 1000, 2000, 4000)){
        write(sprintf("performing %i shufflings of %i rows then limiting to < %.4g",n_perm, sum(g_subset), cutoff), stderr())
        t = Sys.time()
        n_greater[g_subset] = .freedman_lane_sim(reduced_fitted[g_subset,],
@@ -729,13 +729,18 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
 
    for(i in 1:n_perms){
       ystar = reduced_fitted + reduced_resid[sample(1:nc),]
-      fit = lm.fit(design, ystar)
       if(use_beta != "FALSE"){
+          beta = lm_fit_fast(ystar, design, use_beta)
           # we have changed use_beta to the name of the variable to extract.
-          n_greater = n_greater + (abs(fit$coef[use_beta,]) > stat_orig)
+          n_greater = n_greater + (abs(beta) > stat_orig)
       } else {
-          fit0 = lm.fit(reduced_design, ystar)
-          f = ff(t(fit0$residuals), t(fit$residuals),
+          #fit = lm.fit(design, ystar)
+          #fit0 = lm.fit(reduced_design, ystar)
+          #f = ff(t(fit0$residuals), t(fit$residuals),
+          #       ncol(reduced_design), ncol(design), p=FALSE)
+          fit0_res = lm_fit_fast(ystar, reduced_design, "res")
+          fit_res = lm_fit_fast(ystar, design, "res")
+          f = ff(t(fit0_res), t(fit_res),
                  ncol(reduced_design), ncol(design), p=FALSE)
           n_greater = n_greater + (abs(f) > stat_orig)
       }
@@ -745,3 +750,24 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
    close(pb)
    return(n_greater)
 }
+
+
+# from Douglas Bates' artical in R News! June 2004
+# naive.sol <- solve(t(X) %*%  X) %*% t(X) %*% dat
+# cpod.sol <- solve(crossprod(X), crossprod(X, dat))
+# ch <- chol(crossprod(X))
+#    chol.sol <- backsolve(ch, forwardsolve(ch, crossprod(X, dat), upper = TRUE, trans = TRUE))
+
+lm_fit_fast <- function(dat, X, out) {
+    # originally from R charm package.
+    #sol = solve(t(X)%*%X)%*%t(X) %*% t(dat)
+    beta = solve(crossprod(X), t(crossprod(dat, X)))
+    if(out %in% rownames(beta)) return(beta[out,])
+
+    if(out=="fit") {
+        return(t(X%*% beta))
+    } else if(out=="res") {
+        return(dat - (X%*% beta))
+    } else stop("invalid out arg")
+}
+
