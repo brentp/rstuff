@@ -630,6 +630,7 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     return(output_file)
 }
 
+
 ff = function(r0, r1, df0, df1, p=FALSE){
     n = ncol(r0)
     stopifnot(n == ncol(r1))
@@ -679,14 +680,18 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
    n_perms = rep(0, nrow(y))
    g_subset = rep(TRUE, nrow(y))
    cutoff = 0.20
+   sim_stat = c()
+ 
+   perm_counts = c(50, 200, 400, 750, 2000, 4000, 8000)
    # THIS sections calls the simulation on shuffled data. after each loop.
    # it takes only the subset that has a perm_p below some less stringent cutoff
    # so it does not waste time retesting probes that have a high p-value after 25
    # sims.
-   for (n_perm in c(50, 200, 400, 750, 1000, 2000, 4000)){
+   for (n_perm in perm_counts){
        write(sprintf("performing %i shufflings of %i rows then limiting to < %.4g",n_perm, sum(g_subset), cutoff), stderr())
        t = Sys.time()
-       n_greater[g_subset] = .freedman_lane_sim(reduced_fitted[g_subset,],
+
+       li = .freedman_lane_sim(reduced_fitted[g_subset,],
                                                 reduced_resid[g_subset,],
                                                 design,
                                                 reduced_design,
@@ -694,6 +699,10 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
                                                 n_perm,
                                                 stat_orig[g_subset],
                                                 use_beta)
+
+       # don't add n_greater because it's added in sim func.
+       n_greater[g_subset] = li[["n_greater"]]
+       #sim_stat = c(sim_stat, li[["sim_stat"]])
        n_perms[g_subset] = n_perms[g_subset] + n_perm
        # n_great / n_perms is the simulated p-value
        if((sum((n_greater / n_perms) < cutoff)) == 0){ break }
@@ -705,14 +714,16 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
        write(Sys.time() - t, stderr())
 
    }
+
    sim_p = data.frame(
-          sim_p=as.matrix((1 + n_greater) / (1 + n_perms), ncol=1),
+          sim_p=as.matrix((n_greater) / (n_perms), ncol=1),
           n_greater=n_greater,
           n_perms=n_perms,
           asym_p=asym$p,
-          F=asym$fstats
+          F=asym$fstats,
+          #beta=asym$beta,
+          sim_q=fdr_from_sim(n_greater, n_perms)
    )
-
    rownames(sim_p) = rownames(dat)
    return(sim_p)
 }
@@ -727,12 +738,12 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
 
    pb = txtProgressBar(min = 0, max = n_perms, style = 3)
 
+
    for(i in 1:n_perms){
       ystar = reduced_fitted + reduced_resid[sample(1:nc),]
       if(use_beta != "FALSE"){
-          beta = lm_fit_fast(ystar, design, use_beta)
+          stat = abs(lm_fit_fast(ystar, design, use_beta))
           # we have changed use_beta to the name of the variable to extract.
-          n_greater = n_greater + (abs(beta) > stat_orig)
       } else {
           #fit = lm.fit(design, ystar)
           #fit0 = lm.fit(reduced_design, ystar)
@@ -740,15 +751,30 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
           #       ncol(reduced_design), ncol(design), p=FALSE)
           fit0_res = lm_fit_fast(ystar, reduced_design, "res")
           fit_res = lm_fit_fast(ystar, design, "res")
-          f = ff(t(fit0_res), t(fit_res),
-                 ncol(reduced_design), ncol(design), p=FALSE)
-          n_greater = n_greater + (abs(f) > stat_orig)
+          stat = abs(ff(t(fit0_res), t(fit_res),
+                 ncol(reduced_design), ncol(design), p=FALSE))
       }
+      n_greater = n_greater + (stat > stat_orig)
       setTxtProgressBar(pb, i)
 
    }
    close(pb)
-   return(n_greater)
+   return(list("n_greater"=n_greater))
+}
+
+fdr_from_sim = function(n_greater, n_sims){
+    o = order(n_greater)
+    ro = order(o)
+
+    total_gt = 1
+    fdr = rep(0, length(n_greater))
+    i = 1
+    for(ng in n_greater[o]){
+        total_gt = total_gt + ng
+        fdr[i] = total_gt
+        i = i + 1
+    }
+    return(pmin(fdr[ro] / (n_sims + 1), 1))
 }
 
 
