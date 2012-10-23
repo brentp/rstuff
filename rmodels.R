@@ -656,6 +656,8 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
    fit0 = lm.fit(mod0, t(y))
    fit = lm.fit(mod, t(y))
    reduced_fitted = t(fit0$fitted.values)
+   reduced_resid = t(fit0$residuals)
+   asym = ff(reduced_resid, t(fit$residuals), ncol(mod0), ncol(mod), p=TRUE)
 
    if(use_beta){
            use_beta = setdiff(colnames(mod), colnames(mod0))
@@ -665,12 +667,8 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
            stat_orig = abs(fit$coef[use_beta,])
            # actually not reduced residuals, but leaving name for now...
            # use residuals from full model and fit from null model.
-           reduced_resid = t(fit$residuals)
-           asym = ff(t(fit0$residuals), reduced_resid, ncol(mod0), ncol(mod), p=TRUE)
            asym$beta = stat_orig
    } else {
-       reduced_resid = t(fit0$residuals)
-       asym = ff(reduced_resid, t(fit$residuals), ncol(mod0), ncol(mod), p=TRUE)
        stat_orig = asym$fstats
    }
    rm(fit0, fit); gc()
@@ -680,17 +678,19 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
    any_n_greater = rep(0, nrow(y))
    n_perms = rep(0, nrow(y))
    g_subset = rep(TRUE, nrow(y))
-   cutoff = 0.20
+   cutoff = 0.1
    sim_stat = c()
  
-   perm_counts = c(50, 200, 400, 750, 2000, 4000, 8000)
-   perm_counts = c(15, 40, 80, 400, 500, 4000)
-   perm_counts = c(15, 4000)
+   #perm_counts = c(50, 200, 400, 750, 2000, 4000, 8000)
+   #perm_counts = c(15, 40, 80, 400, 500, 4000)
+   #perm_counts = c(15, 30, 60, 120, 240, 500, 1000, 2000, 3000, 4000, 5000, 10000, 20000)
+   n_perm = 20
    # THIS sections calls the simulation on shuffled data. after each loop.
    # it takes only the subset that has a perm_p below some less stringent cutoff
    # so it does not waste time retesting probes that have a high p-value after 25
    # sims.
-   for (n_perm in perm_counts){
+   while(sum(g_subset) > 0 && cutoff > 1 / nrow(reduced_resid) && max(n_perms) < 6000){
+       n_perm = n_perm * 2
        write(sprintf("performing %i shufflings of %i rows then limiting to < %.4g",n_perm, sum(g_subset), cutoff), stderr())
        t = Sys.time()
 
@@ -710,7 +710,7 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
        #sim_stat = c(sim_stat, li[["sim_stat"]])
        n_perms[g_subset] = n_perms[g_subset] + n_perm
        # n_great / n_perms is the simulated p-value
-       if((sum((n_greater / n_perms) < cutoff)) == 0){ break }
+       #if((sum((n_greater / n_perms) < cutoff)) == 0){ break }
        # for the next iteration, we only care about probes that
        # have a current simulated p-value less than the cutoff
        g_subset = g_subset & (((n_greater / n_perms) < cutoff) ) # | (asym$p[g_subset] < cutoff))
@@ -724,7 +724,7 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
           probes=rownames(dat),
           sim_p=as.matrix((n_greater) / (n_perms), ncol=1),
           n_greater=n_greater,
-          any_n_greater=any_n_greater,
+          #any_n_greater=any_n_greater,
           n_perms=n_perms,
           asym_p=format(asym$p, digits=4, nsmall=3, trim=TRUE),
           F=format(asym$fstats, digits=4, nsmall=2, trim=TRUE),
@@ -747,7 +747,6 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
 
    pb = txtProgressBar(min = 0, max = n_perms, style = 3)
 
-
    for(i in 1:n_perms){
       ystar = reduced_fitted + reduced_resid[sample(1:nc),]
       if(use_beta != "FALSE"){
@@ -764,7 +763,22 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
                  ncol(reduced_design), ncol(design), p=FALSE))
       }
       n_greater = n_greater + (stat > stat_orig)
-      any_n_greater = any_n_greater + unlist(lapply(stat_orig, function(so){ sum(stat > so) }))
+      #any_n_greater = any_n_greater + unlist(lapply(stat_orig, function(so){ sum(stat > so) }))
+      pv = ecdf(-stat)(-stat_orig)
+      #print(head(pv))
+      #print(min(stat))
+      #print(mean(stat))
+      #print(max(stat))
+      #stat05 = unlist(stat[max(1, round(length(stat) * 0.80))])
+      #fdr = unlist(stat[min(which(stat > stat05))])[[1]]
+
+      #print(stat05)
+      #print(sum(stat > stat05))
+      #print(fdr)
+      #stop("DEBUGGING")
+      #if(!is.na(fdr)){
+          any_n_greater = any_n_greater + pv #(fdr > stat_orig)
+      #}
 
       setTxtProgressBar(pb, i)
 
@@ -774,18 +788,9 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
 }
 
 fdr_from_sim = function(n_greater, n_sims){
-    o = order(n_greater)
-    ro = order(o)
-
-    total_gt = 1
-    fdr = rep(0, length(n_greater))
-    i = 1
-    for(ng in n_greater[o]){
-        total_gt = total_gt + ng
-        fdr[i] = total_gt
-        i = i + 1
-    }
-    return(fdr[ro] / n_sims)
+    qv = n_greater / n_sims
+    for(i in 2:length(qv)){ qv[i] = max(qv[i], qv[i - 1]) }
+    qv
 }
 
 
