@@ -677,12 +677,15 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
    
    n_cols = ncol(reduced_resid)
    n_greater = rep(0, nrow(y))
+   any_n_greater = rep(0, nrow(y))
    n_perms = rep(0, nrow(y))
    g_subset = rep(TRUE, nrow(y))
    cutoff = 0.20
    sim_stat = c()
  
    perm_counts = c(50, 200, 400, 750, 2000, 4000, 8000)
+   perm_counts = c(15, 40, 80, 400, 500, 4000)
+   perm_counts = c(15, 4000)
    # THIS sections calls the simulation on shuffled data. after each loop.
    # it takes only the subset that has a perm_p below some less stringent cutoff
    # so it does not waste time retesting probes that have a high p-value after 25
@@ -696,40 +699,46 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
                                                 design,
                                                 reduced_design,
                                                 n_greater[g_subset],
+                                                any_n_greater[g_subset],
                                                 n_perm,
                                                 stat_orig[g_subset],
                                                 use_beta)
 
        # don't add n_greater because it's added in sim func.
        n_greater[g_subset] = li[["n_greater"]]
+       any_n_greater[g_subset] = li[["any_n_greater"]]
        #sim_stat = c(sim_stat, li[["sim_stat"]])
        n_perms[g_subset] = n_perms[g_subset] + n_perm
        # n_great / n_perms is the simulated p-value
        if((sum((n_greater / n_perms) < cutoff)) == 0){ break }
        # for the next iteration, we only care about probes that
        # have a current simulated p-value less than the cutoff
-       g_subset = g_subset & ((n_greater / n_perms) < cutoff)
+       g_subset = g_subset & (((n_greater / n_perms) < cutoff) ) # | (asym$p[g_subset] < cutoff))
        # the cutoff becomes more stringent each time.
        cutoff = cutoff / 2
        write(Sys.time() - t, stderr())
 
    }
-
+   options(nsmall=10)
    sim_p = data.frame(
+          probes=rownames(dat),
           sim_p=as.matrix((n_greater) / (n_perms), ncol=1),
           n_greater=n_greater,
+          any_n_greater=any_n_greater,
           n_perms=n_perms,
-          asym_p=asym$p,
-          F=asym$fstats,
-          #beta=asym$beta,
-          sim_q=fdr_from_sim(n_greater, n_perms)
+          asym_p=format(asym$p, digits=4, nsmall=3, trim=TRUE),
+          F=format(asym$fstats, digits=4, nsmall=2, trim=TRUE),
+          beta=format(asym$beta, digits=4, nsmall=3, trim=TRUE),
+          sim_q=format(fdr_from_sim(any_n_greater, n_perms), digits=4, trim=TRUE)
    )
    rownames(sim_p) = rownames(dat)
    return(sim_p)
 }
 
+
+
 .freedman_lane_sim = function(reduced_fitted, reduced_resid, design, reduced_design,
-                              n_greater, n_perms, stat_orig, use_beta){
+                              n_greater, any_n_greater, n_perms, stat_orig, use_beta){
    # number of simulations with a stat greater than the observed.
    nc = ncol(reduced_resid)
 
@@ -755,11 +764,13 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
                  ncol(reduced_design), ncol(design), p=FALSE))
       }
       n_greater = n_greater + (stat > stat_orig)
+      any_n_greater = any_n_greater + unlist(lapply(stat_orig, function(so){ sum(stat > so) }))
+
       setTxtProgressBar(pb, i)
 
    }
    close(pb)
-   return(list("n_greater"=n_greater))
+   return(list("n_greater"=n_greater, "any_n_greater"=any_n_greater))
 }
 
 fdr_from_sim = function(n_greater, n_sims){
@@ -774,7 +785,7 @@ fdr_from_sim = function(n_greater, n_sims){
         fdr[i] = total_gt
         i = i + 1
     }
-    return(pmin(fdr[ro] / (n_sims + 1), 1))
+    return(fdr[ro] / n_sims)
 }
 
 
