@@ -684,14 +684,15 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
    #perm_counts = c(50, 200, 400, 750, 2000, 4000, 8000)
    #perm_counts = c(15, 40, 80, 400, 500, 4000)
    #perm_counts = c(15, 30, 60, 120, 240, 500, 1000, 2000, 3000, 4000, 5000, 10000, 20000)
-   n_perm = 100
+   n_perm = 40
    # THIS sections calls the simulation on shuffled data. after each loop.
    # it takes only the subset that has a perm_p below some less stringent cutoff
    # so it does not waste time retesting probes that have a high p-value after 25
    # sims.
-   print_subset = which(asym$p < 8e-4)[1:20]
+   n_samples_full = nrow(y)
+   print_subset = which(asym$p < 7e-4)[1:20]
    loops = rep(0, nrow(y))
-   while(sum(g_subset) > 0 && cutoff > 1 / nrow(reduced_resid) && max(n_perms) < 9000){
+   while(sum(g_subset) > 0 && cutoff > 1 / nrow(reduced_resid) && max(n_perms) < 150000){
        write(sprintf("performing %i shufflings of %i rows then limiting to < %.4g",n_perm, sum(g_subset), cutoff), stderr())
        t = Sys.time()
 
@@ -702,7 +703,8 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
                                                 n_greater[g_subset],
                                                 n_perm,
                                                 stat_orig[g_subset],
-                                                use_beta)
+                                                use_beta,
+                                                n_samples_full)
 
        # don't add n_greater because it's added in sim func.
        n_greater[g_subset] = li[["n_greater"]]
@@ -718,9 +720,9 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
        g_subset = g_subset & (((n_greater / n_perms) < cutoff) ) # | (asym$p[g_subset] < cutoff))
        # the cutoff becomes more stringent each time.
        cutoff = cutoff / 2
+       if(sum(g_subset) < 25){ n_perm = n_perm * 5 }
        n_perm = n_perm * 2
        write(Sys.time() - t, stderr())
-       break
    }
    qvals = pmin(1, qvals / loops)
 
@@ -743,11 +745,13 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
 
 
 
-.freedman_lane_sim = function(reduced_fitted, reduced_resid, design, reduced_design,
-                              n_greater, n_perms, stat_orig, use_beta){
+.freedman_lane_sim = function(reduced_fitted, reduced_resid, design, 
+                              reduced_design, n_greater, n_perms,
+                              stat_orig, use_beta, n_samples_full){
    # number of simulations with a stat greater than the observed.
    nc = ncol(reduced_resid)
    qvals = matrix(0, nrow=nrow(reduced_resid), ncol=n_perms)
+   qvals = rep(0, nrow(reduced_resid))
    stat_max = 0
 
    reduced_resid = t(reduced_resid)
@@ -774,13 +778,19 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=FALSE){
       qv = ecdf(-(stat))(-stat_orig)
       o = order(qv)
       ro = order(o)
-      qv = ((qv[o] * length(qv)) / (1:length(qv)))[ro]
-      qvals[,i] = qv
+# TODO: here multiply by number of rows in full sample rather than by
+# length qv which is just for the subset.
+      #qv = ((qv[o] * length(qv)) / (1:length(qv)))[ro]
+      # correct by the number in the full sample...
+
+      # n_samples_full is like the n argument to p.adjust()
+      qv = ((qv[o] * n_samples_full) / (1:length(qv)))[ro]
+      qvals = qvals + qv
       setTxtProgressBar(pb, i)
 
    }
    close(pb)
-   return(list("n_greater"=n_greater, "qvals"=rowMeans(qvals)))
+   return(list("n_greater"=n_greater, "qvals"=qvals / n_perms))
 }
 
 fdr_from_sim = function(qvals, pvals){
