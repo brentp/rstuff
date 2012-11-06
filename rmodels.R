@@ -521,7 +521,7 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
 
     if(!is.na(seed)){
         mod_prefix = .shuffle_clinical(mod, seed, prefix)
-        mod = mod_prefix[1]
+        mod = as.matrix(mod_prefix[1])
         prefix = mod_prefix[2]
     } 
     if(ncol(mod) != 0){
@@ -586,8 +586,58 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     #err.log(summary(me))
     me$prefix = prefix
 
-    .add_dist(output_file_name_cis, output_file_name_tra, snpspos, genepos, prefix, snp_size)
+    out_file = .add_dist(output_file_name_cis, output_file_name_tra, snpspos, genepos, prefix, snp_size)
+    plot_enrichment(out_file_name_cis, out_file_name_tra, me$cis$ntests,
+               me$trans$ntests, paste0(prefix, "cis-enrichment.png"))
     return(me)
+}
+
+plot_enrichment = function(fcis, ftra, ncis, ntra, out_name){
+
+    png(out_name)
+    cis = read.delim(fcis)
+    tra = read.delim(ftra)
+
+    p.max = max(cis$FDR, tra$FDR)
+    p.min = min(cis$FDR, tra$FDR)
+    print(paste(p.max, p.min))
+
+    p.rng = 10^-seq(-log10(p.max), -log10(p.min), length.out=51)
+    print(-log10(p.rng))
+
+    cis_counts = rep(NA, 20)
+    tra_counts = rep(NA, 20)
+    chi.ps = rep(NA, 20)
+    i = 0
+    for(pcutoff in p.rng){
+        i = i + 1
+        cis_counts[i] = sum(cis$FDR < pcutoff)
+        tra_counts[i] = sum(tra$FDR < pcutoff)
+        chi.ps[i] = chisq.test(matrix(c(cis_counts[i], ncis, 
+                                     tra_counts[i], ntra), nrow=2))$p.value
+
+        if(tra_counts[i] == 0 || cis_counts[i] == 0){ break }
+        print(paste(cis_counts[i], tra_counts[i], chi.ps[i]))
+    }
+    cis_counts = cis_counts[1:i]
+    tra_counts = tra_counts[1:i]
+    chi.ps = chi.ps[1:i]
+    cis_enrichment = (cis_counts / ncis) / (tra_counts / ntra)
+    ymax = max(-log10(chi.ps), cis_enrichment) * 1.15
+    plot(-log10(p.rng[1:i]), 
+        cis_enrichment,
+        type='b',
+        pch=5,
+        ylim=c(0, ymax),
+        ylab="", xlab="-log10(FDR-cutoff)",
+        main="cis enrichment of QTLs", col="black")
+    points(-log10(p.rng[1:i]), -log10(chi.ps), pch=19, col="blue", type='b')
+
+    legend(-log10(p.rng[i]), ymax, c("cis enrichment", 
+        "-log10(chisq-p) of enrichment"), col=c("black", "blue"),
+        pch=c(5, 19), xjust=1, bg="transparent")
+
+    dev.off()
 }
 
 .add_dist = function(fcis, ftrans, snpspos, genepos, prefix, snp_size=0){
