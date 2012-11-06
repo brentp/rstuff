@@ -424,22 +424,7 @@ matrix.eQTL.post = function(prefix, expr_locs, marker_locs=NULL, anno_lib="BSgen
     rg = BED2RangedData(marker_locs)
     anno = as.data.frame(annotatePeakInBatch(rg, Annotation=anno_lib, select="all"))
 
-
-
-
-
-# TODO: write separate annotate fn.
-
-    # http://www.stat.berkeley.edu/share/biolab/Courses/CIPF10/Data/lab3_solutions.r
-
-
-    #test.bed = data.frame(cbind(chrom = c("4", "6"),
-    #chromStart=c("100", "1000"),chromEnd=c("200", "1100"),
-    #name=c("peak1", "peak2")))
-    #test.rangedData = BED2RangedData(test.bed)
-    #as.data.frame(annotatePeakInBatch(test.rangedData,
-    #BED2RangedData() 
-
+    print(head(anno))
 }
 
 
@@ -587,19 +572,21 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     me$prefix = prefix
 
     out_file = .add_dist(output_file_name_cis, output_file_name_tra, snpspos, genepos, prefix, snp_size)
-    plot_enrichment(out_file_name_cis, out_file_name_tra, me$cis$ntests,
+    plot_enrichment(output_file_name_cis, output_file_name_tra, me$cis$ntests,
                me$trans$ntests, paste0(prefix, "cis-enrichment.png"))
+    matrix.eQTL.post(prefix, expr_locs, marker_locs)
     return(me)
 }
 
-plot_enrichment = function(fcis, ftra, ncis, ntra, out_name){
+plot_enrichment = function(fcis, ftra, ncis, ntra, out_name,
+   column="FDR"){
 
     png(out_name)
     cis = read.delim(fcis)
     tra = read.delim(ftra)
 
-    p.max = max(cis$FDR, tra$FDR)
-    p.min = min(cis$FDR, tra$FDR)
+    p.max = max(cis[,column], tra[,column])
+    p.min = min(cis[,column], tra[,column])
     print(paste(p.max, p.min))
 
     p.rng = 10^-seq(-log10(p.max), -log10(p.min), length.out=51)
@@ -611,8 +598,8 @@ plot_enrichment = function(fcis, ftra, ncis, ntra, out_name){
     i = 0
     for(pcutoff in p.rng){
         i = i + 1
-        cis_counts[i] = sum(cis$FDR < pcutoff)
-        tra_counts[i] = sum(tra$FDR < pcutoff)
+        cis_counts[i] = sum(cis[,column] < pcutoff)
+        tra_counts[i] = sum(tra[,column] < pcutoff)
         chi.ps[i] = chisq.test(matrix(c(cis_counts[i], ncis, 
                                      tra_counts[i], ntra), nrow=2))$p.value
 
@@ -621,7 +608,9 @@ plot_enrichment = function(fcis, ftra, ncis, ntra, out_name){
     }
     cis_counts = cis_counts[1:i]
     tra_counts = tra_counts[1:i]
+    if(length(cis_counts) == 1){ return }
     chi.ps = chi.ps[1:i]
+    print(-log10(chi.ps))
     cis_enrichment = (cis_counts / ncis) / (tra_counts / ntra)
     ymax = max(-log10(chi.ps), cis_enrichment) * 1.15
     plot(-log10(p.rng[1:i]), 
@@ -629,7 +618,7 @@ plot_enrichment = function(fcis, ftra, ncis, ntra, out_name){
         type='b',
         pch=5,
         ylim=c(0, ymax),
-        ylab="", xlab="-log10(FDR-cutoff)",
+        ylab="", xlab=sprintf("-log10(%s-cutoff)", column),
         main="cis enrichment of QTLs", col="black")
     points(-log10(p.rng[1:i]), -log10(chi.ps), pch=19, col="blue", type='b')
 
