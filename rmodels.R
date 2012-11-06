@@ -405,26 +405,40 @@ shuffle_matrix = function(mat, seed, dim=c("col", "row")){
     return(mat)
 }
 
-matrix.eQTL.post = function(prefix, expr_locs, marker_locs=NULL, anno_lib="BSgenome.Hsapiens.UCSC.hg18"){
+matrix.eQTL.post = function(prefix, expr_locs, marker_locs=NULL, anno=NULL){
     tra = read.tab(paste(prefix, 'eQTL_tra.txt', sep=""))
     cis = read.tab(paste(prefix, 'eQTL_cis.txt', sep=""))
+    library(ChIPpeakAnno)
     
     if(is.null(marker_locs)){
         marker_locs = get_marker_locs(intersect(tra$SNP, cis$SNP))
         marker_locs$chromStart = marker_locs$pos - 1
         marker_locs$chromEnd = marker_locs$pos
-        marker_locs$name = marker_locs$SNP
+        marker_locs$name = marker_locs$snp
+        marker_locs = marker_locs[,c("chrom", "chromStart", "chromEnd", "name")]
     }
     # output: snp_chrom snp_start snp_end expr_chrom expr_start expr_end
     # cis_trans dist t-stat pval FDR expr_gene snp_stuff_from_chippeakanno.
-    library(ChIPpeakAnno)
-    library(anno_lib)
-    library(rtracklayer)
 
     rg = BED2RangedData(marker_locs)
-    anno = as.data.frame(annotatePeakInBatch(rg, Annotation=anno_lib, select="all"))
+    anno = annotatePeakInBatch(rg, 
+                  AnnotationData=anno, select="all")
+    library(org.Hs.eg.db)
+    # TODO: make this changeable.
+    anno = addGeneIDs(anno, "org.Hs.eg.db", c("symbol"))
 
-    print(head(anno))
+    eg = getEnrichedGO(anno, orgAnn="org.Hs.eg.db", maxP=0.01, multiAdj=TRUE,
+                       multiAdjMethod="BH" )
+    go_f = paste0(prefix, "snp.go.enrich.txt")
+    write.table(rbind(eg$mf, eg$bp, eg$cc), row.names=FALSE, sep="\t", file=go_f)
+
+    anno = as.data.frame(anno)
+    colnames(anno)[1] == "chrom"
+    anno[,1] = paste("chr", anno[,1], sep="")
+    write.table(anno, file=paste0(prefix, "anno.txt"), sep="\t",
+                quote=FALSE, row.names=FALSE)
+    anno
+
 }
 
 
@@ -440,13 +454,17 @@ get_marker_locs = function(names){
 }
 
 
+library(ChIPpeakAnno)
+data(TSS.human.NCBI36)
 
 matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
                             expr_locs, marker_locs=NULL,
                             cis_dist=1e6, seed=NA, gseed=NA,
                             linear_cross=FALSE,
                             p_thresh=1.0,
-                            snp_size=1){
+                            snp_size=1,
+                            anno=TSS.human.NCBI36){
+   
     prefix = .adjust_prefix(prefix)
 
     stopifnot(all(colnames(marker_data) == colnames(expr_data)))
@@ -517,8 +535,7 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     # get the location of the SNPs.
     if(is.null(marker_locs)){
         snpspos = get_marker_locs(rownames(marker_complete));
-    }
-    else {
+    } else {
         snpspos = marker_locs
         rm(marker_locs);
     }
@@ -572,9 +589,11 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
     me$prefix = prefix
 
     out_file = .add_dist(output_file_name_cis, output_file_name_tra, snpspos, genepos, prefix, snp_size)
-    plot_enrichment(output_file_name_cis, output_file_name_tra, me$cis$ntests,
-               me$trans$ntests, paste0(prefix, "cis-enrichment.png"))
-    matrix.eQTL.post(prefix, expr_locs, marker_locs)
+    #plot_enrichment(output_file_name_cis, output_file_name_tra, me$cis$ntests,
+    #           me$trans$ntests, paste0(prefix, "cis-enrichment.png"))
+    if(!all(is.na(anno))){
+        anno = matrix.eQTL.post(prefix, expr_locs, anno=anno)
+    }
     return(me)
 }
 
@@ -587,10 +606,8 @@ plot_enrichment = function(fcis, ftra, ncis, ntra, out_name,
 
     p.max = max(cis[,column], tra[,column])
     p.min = min(cis[,column], tra[,column])
-    print(paste(p.max, p.min))
 
     p.rng = 10^-seq(-log10(p.max), -log10(p.min), length.out=51)
-    print(-log10(p.rng))
 
     cis_counts = rep(NA, 20)
     tra_counts = rep(NA, 20)
@@ -600,17 +617,15 @@ plot_enrichment = function(fcis, ftra, ncis, ntra, out_name,
         i = i + 1
         cis_counts[i] = sum(cis[,column] < pcutoff)
         tra_counts[i] = sum(tra[,column] < pcutoff)
-        chi.ps[i] = chisq.test(matrix(c(cis_counts[i], ncis, 
-                                     tra_counts[i], ntra), nrow=2))$p.value
+        chi.ps[i] = max(1e-300, chisq.test(matrix(c(cis_counts[i], ncis,
+                                     tra_counts[i], ntra), nrow=2))$p.value)
 
         if(tra_counts[i] == 0 || cis_counts[i] == 0){ break }
-        print(paste(cis_counts[i], tra_counts[i], chi.ps[i]))
     }
     cis_counts = cis_counts[1:i]
     tra_counts = tra_counts[1:i]
     if(length(cis_counts) == 1){ return }
     chi.ps = chi.ps[1:i]
-    print(-log10(chi.ps))
     cis_enrichment = (cis_counts / ncis) / (tra_counts / ntra)
     ymax = max(-log10(chi.ps), cis_enrichment) * 1.15
     plot(-log10(p.rng[1:i]), 
@@ -663,8 +678,10 @@ plot_enrichment = function(fcis, ftra, ncis, ntra, out_name,
     all_dat$dist = apply(cbind(abs(dist_s), abs(dist_e), abs(dist_s1), abs(dist_e1)), 1, min)
     all_dat$dist[(dist_s > 0 | dist_s1 > 0) & (dist_e < 0 | dist_e1 < 0)] = 0 # account for snp inside gene. set dist to 0
     all_dat$dist[all_dat[,gene_chrom] != all_dat[,snp_chrom]] = NA
+    all_dat = all_dat[,c("chrom_snp", "pos_snp", "pos_snp", out_names, "cis_tra", "dist")]
 
-    all_dat = all_dat[,c(out_names, "cis_tra", "dist")]
+    all_dat[,3] = all_dat[,3] + snp_size
+    colnames(all_dat)[1:3] = c("chrom", "start", "end")
     write.table(all_dat, file=output_file, row.names=FALSE, sep="\t", quote=FALSE)
     return(output_file)
 }
