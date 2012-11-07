@@ -411,7 +411,7 @@ matrix.eQTL.post = function(prefix, expr_locs, marker_locs=NULL, anno=NULL){
     library(ChIPpeakAnno)
     
     if(is.null(marker_locs)){
-        marker_locs = get_marker_locs(intersect(tra$SNP, cis$SNP))
+        marker_locs = get_marker_locs(union(tra$SNP, cis$SNP))
         marker_locs$chromStart = marker_locs$pos - 1
         marker_locs$chromEnd = marker_locs$pos
         marker_locs$name = marker_locs$snp
