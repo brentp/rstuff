@@ -644,6 +644,16 @@ plot_enrichment = function(fcis, ftra, ncis, ntra, out_name,
     dev.off()
 }
 
+mart_anno = function(peakList, dataset="hsapiens_gene_ensembl", 
+                                      host="may2009.archive.ensembl.org"){
+    mart = useMart(biomart="ensembl", dataset=dataset, host=host)
+    TSS = getAnnotation(mart, featureType="TSS")
+    utr5 = getAnnotation(mart, featureType="5utr")
+    utr3 = getAnnotation(mart, featureType="3utr")
+    exon = getAnnotation(mart, featureType="Exon")
+    assignChromosomeRegion(myPeakList, exon, TSS, utr5, utr3)
+}
+
 .add_dist = function(fcis, ftrans, snpspos, genepos, prefix, snp_size=0){
     # snp_size accounts for when the snp is actually a probe...
     gene_chrom = paste(colnames(genepos)[2], "_gene", sep="")
