@@ -235,6 +235,25 @@ rowVars = function (x, ...) {
     return(rowSums(sqr(x - rowMeans(x, ...)), ...)/(n - 1))
 }
 
+# if ids has repeated values (e.g. genes. then keep only the corresponding
+# rows with highest variance.
+keep_highest_var = function(ids, mat){
+   rownames(mat) = as.character(1:nrow(mat))
+   dup_ids = ids[duplicated(ids)] # 266 unique
+   is_dup = ids %in% dup_ids # 547 total
+   vars = rowVars(mat[is_dup,])
+
+   max.vars = tapply(vars, ids[ids %in% dup_ids], function(f){ names(which.max(f)) })
+   keep = ids[!is_dup]
+   stopifnot(intersect(names(max.vars), keep) == character(0))
+
+   ret = mat[max.vars,]
+   ret = rbind(ret, mat[!is_dup,])
+   rownames(ret) = c(names(max.vars), ids[!is_dup])
+
+   as.matrix(ret)
+}
+
 remove_low_variance = function(mat, p_drop=0.25){
     if(p_drop > 1){ p_drop = p_drop / 100 }
     rvm = rowVars(mat)
