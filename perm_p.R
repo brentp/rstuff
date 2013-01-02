@@ -11,6 +11,11 @@ ff = function(r0, r1, df0, df1, p=FALSE){
     return(data.frame(fstats=fstats, p=p))
 }
 
+welch = function(){
+     # http://staff.ustc.edu.cn/~zwp/teach/Reg/Welch%20test.pdf
+     # http://www.ncbi.nlm.nih.gov/pmc/articles/PMC1184045/
+}
+
 
 # This is a modified implementation of the freedman-lane algorithm described in:
 # http://www.ncbi.nlm.nih.gov/pubmed/17630650 by Wagner et al.
@@ -34,24 +39,30 @@ ff = function(r0, r1, df0, df1, p=FALSE){
 # The output is such that this can be parallelized and combined. However, on
 # a modest laptop. This function runs a set of 12,042 genes through as many
 # as 163K iterations in just over 6 minutes.
-freedman_lane_permute = function(y, mod, mod0, use_beta=TRUE, max_iter=100000){
-   # if use_beta = True, then it runs compares the simulated parameter
-   # estimate to the observed. oterhwise, it compares f-statistics.
+permute = function(y, mod, mod0, stat=c("beta", "F", "welch"), max_iter=100000){
    design = mod
+   if(is.character(mod0)){
+      rmnames = mod0
+      mod0 = as.matrix(design[,!colnames(mod) %in% mod0], nrow=nrow(mod))
+      colnames(mod0) = colnames(mod)[!colnames(mod) %in% rmnames]
+   }
+   if(0 != length(setdiff(colnames(mod0), colnames(mod)))){
+       stop("mod0 must be a subset of mod")
+   }
    reduced_design = mod0
 
    fit0 = lm.fit(mod0, t(y))
    fit = lm.fit(mod, t(y))
    reduced_fitted = t(fit0$fitted.values)
    reduced_resid = t(fit0$residuals)
-   asym = ff(reduced_resid, t(fit$residuals), ncol(mod0), ncol(mod), p=TRUE)
 
-   if(use_beta){
-           use_beta = setdiff(colnames(mod), colnames(mod0))
-           if(length(use_beta) > 1){
-               stop("can only have a single covariate if use_beta is True")
+   asym = ff(reduced_resid, t(fit$residuals), ncol(mod0), ncol(mod), p=TRUE)
+   if(stat == "beta"){
+           stat = setdiff(colnames(mod), colnames(mod0))
+           if(length(stat) > 1){
+               stop("can only have a single covariate if stat is 'F'")
            }
-           stat_orig = abs(fit$coef[use_beta,])
+           stat_orig = abs(fit$coef[stat,])
            # actually not reduced residuals, but leaving name for now...
            # use residuals from full model and fit from null model.
            asym$beta = stat_orig
@@ -66,7 +77,7 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=TRUE, max_iter=100000){
    g_subset = rep(TRUE, nrow(y))
    cutoff = 0.2
  
-   n_perm = 40
+   n_perm = 30
    # THIS sections calls the simulation on shuffled data. after each loop.
    # it takes only the subset that has a perm_p below some less stringent cutoff
    # so it does not waste time retesting probes that have a high p-value after 25
@@ -87,7 +98,7 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=TRUE, max_iter=100000){
                                                 n_greater[g_subset],
                                                 n_perm,
                                                 stat_orig[g_subset],
-                                                use_beta,
+                                                stat,
                                                 n_samples_full)
 
        # don't add n_greater because it's added in sim func.
@@ -131,7 +142,7 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=TRUE, max_iter=100000){
 
 .freedman_lane_sim = function(reduced_fitted, reduced_resid, design, 
                               reduced_design, n_greater, n_perms,
-                              stat_orig, use_beta, n_samples_full){
+                              stat_orig, stat, n_samples_full){
    # number of simulations with a stat greater than the observed.
    nc = ncol(reduced_resid)
    qvals = rep(0, nrow(reduced_resid))
@@ -144,8 +155,8 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=TRUE, max_iter=100000){
 
    for(i in 1:n_perms){
       ystar = reduced_fitted + reduced_resid[sample(1:nc),]
-      if(use_beta != "FALSE"){
-          stat = abs(lm_fit_fast(ystar, design, use_beta))
+      if(stat != "F"){
+          sim_stat = abs(lm_fit_fast(ystar, design, stat))
           # we have changed use_beta to the name of the variable to extract.
       } else {
           #fit = lm.fit(design, ystar)
@@ -154,11 +165,11 @@ freedman_lane_permute = function(y, mod, mod0, use_beta=TRUE, max_iter=100000){
           #       ncol(reduced_design), ncol(design), p=FALSE)
           fit0_res = lm_fit_fast(ystar, reduced_design, "res")
           fit_res = lm_fit_fast(ystar, design, "res")
-          stat = abs(ff(t(fit0_res), t(fit_res),
+          sim_stat = abs(ff(t(fit0_res), t(fit_res),
                  ncol(reduced_design), ncol(design), p=FALSE))
       }
-      n_greater = n_greater + (stat > stat_orig)
-      qv = ecdf(-(stat))(-stat_orig)
+      n_greater = n_greater + (sim_stat > stat_orig)
+      qv = ecdf(-(sim_stat))(-stat_orig)
       o = order(qv)
       ro = order(o)
       #qv = ((qv[o] * length(qv)) / (1:length(qv)))[ro]
