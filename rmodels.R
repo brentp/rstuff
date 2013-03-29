@@ -1,9 +1,22 @@
 library(limma)
 library(gtools)
 
-options(scipen=15, stringsAsFactors=FALSE) # stop it from printing 1e6 instead of 1000000
+options(scipen=4, stringsAsFactors=FALSE) # stop it from printing 1e6 instead of 1000000
 
 logit = defmacro(p, expr=log(p) - log(1 - p))
+
+genomic_control = function(pvals, mid.fn=median){
+    # http://en.wikipedia.org/wiki/Population_stratification
+    mid.fn(qchisq(pvals, df=1, lower.tail=F)) / 0.4549
+}
+
+# return pvalues after the genomic control correction
+gc.adjust = function(pvals){
+    gc = genomic_control(pvals)
+    qchi = qchisq(pvals, df=1, lower.tail=F)
+    qchi = qchi / gc
+    pchisq(qchi, df=1, lower.tail=F)
+}
 
 .write.raw.meth = function(RGset, dp, out_prefix){
     raw = preprocessRaw(RGset)
@@ -262,7 +275,7 @@ peer.limma.ez = function(data, clin, model,
         n_factors = as.integer(batch_correct)
         peer_factors = run.peer(mod, t(data_complete), prefix, n_factors)
         modpeer = cbind(mod, peer_factors)
-        write.table(modpeer, sep="\t", row.names=F, file=paste(prefix, "mod.peer.", n_factors, ".txt", sep=""), quote=F)
+        write.table(modpeer, sep="\t", row.names=T, file=paste(prefix, "mod.peer.", n_factors, ".txt", sep=""), quote=F)
 
         # we remove the batch effects from the data, rather than including the
         # peers as covariates.
@@ -293,13 +306,14 @@ run.peer = function(mod, data_complete, prefix=NULL, n_factors=5){
         write.table(PEER_getAlpha(peer_obj), file=f, row.names=F, sep="\t")
     }
     colnames(modpeer) = c(colnames(mod), paste('peer_', 1:(ncol(modpeer) - ncol(mod)), sep=""))
+    rownames(modpeer) = rownames(mod)
     # return only the peer columns.
     return(modpeer[,(ncol(mod) + 1):(ncol(modpeer))])
 }
 
 
 
-limma.ez = function(data, mod, coef, contrasts, prefix, probe_len=1){
+limma.ez = function(data, mod, coef, contrasts, prefix, probe_len=1, genome_control=FALSE){
     fit = lmFit(data, mod)
     if(is.null(contrasts)){
         fit = eBayes(fit, trend=FALSE)
@@ -320,7 +334,14 @@ limma.ez = function(data, mod, coef, contrasts, prefix, probe_len=1){
         }
         err.log("getting p-values for:", c)
         tt = topTable(fit, coef=c, n=Inf, sort.by="none")
-
+        lambda = genomic_control(tt$P.Value)
+        message(sprintf("genomic control value: %.2f", lambda))
+        if(genome_control){
+            if(lambda > 1.01){
+                tt$P.Value = gc.adjust(tt$P.Value)
+            }
+            tt$adj.P.Val = p.adjust(tt$P.Value, "fdr")
+        }
         chroms = unlist(lapply(strsplit(as.character(tt$ID), ":", fixed=TRUE), function(r){ r[1] }))
         starts = unlist(lapply(strsplit(as.character(tt$ID), ":", fixed=TRUE), function(r){ as.numeric(r[2]) - 1 }))
         ends = starts + probe_len
