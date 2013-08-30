@@ -494,8 +494,8 @@ get_marker_locs = function(names){
 }
 
 
-library(ChIPpeakAnno)
-data(TSS.human.NCBI36)
+#library(ChIPpeakAnno)
+#data(TSS.human.NCBI36)
 
 matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
                             expr_locs, marker_locs=NULL,
@@ -734,4 +734,28 @@ mart_anno = function(peakList, dataset="hsapiens_gene_ensembl",
     colnames(all_dat)[1:3] = c("chrom", "start", "end")
     write.table(all_dat, file=output_file, row.names=FALSE, sep="\t", quote=FALSE)
     return(output_file)
+}
+
+
+agilent.limma = function(targets, expr_dir, model, names_col=NULL, coef=2, offset=10){
+  mm = model.matrix(model, targets)
+  x = read.maimages(targets, source="agilent", green.only=TRUE, 
+                    names=ifelse(is.null(names_col), removeExt(targets$FileName), targets[,names_col]))
+  
+  
+  y = backgroundCorrect(x, method="normexp", offset=offset)
+  y = normalizeBetweenArrays(y, method="quantile")
+  
+  # from the limma manual
+  # the 95th percentile of the negative control probes on the array
+  neg95 = apply(y$E[y$genes$ControlType==-1,], 2, function(x) quantile(x, p=0.95))
+  
+  cutoff = matrix(1.1 * neg95, nrow(y), ncol(y), byrow=TRUE)
+  isexpr = rowSums(y$E > cutoff) >= (nrow(targets) / 2)
+  
+  expr = y[y$genes$ControlType==0 & isexpr,]
+  expr.ave = avereps(expr, ID=expr$genes[,"ProbeName"])
+  
+  topTable(eBayes(lmFit(expr.ave, mm), trend=TRUE), coef=coef, n=Inf, adjust.method="fdr")
+  
 }
