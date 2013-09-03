@@ -736,13 +736,13 @@ mart_anno = function(peakList, dataset="hsapiens_gene_ensembl",
     return(output_file)
 }
 
+read.agilent = function(targets, names=NULL){
+  read.maimages(targets, source="agilent", green.only=TRUE, 
+                    names=names)
+}
 
-agilent.limma = function(targets, expr_dir, model, names_col=NULL, coef=2, offset=10){
-  mm = model.matrix(model, targets)
-  x = read.maimages(targets, source="agilent", green.only=TRUE, 
-                    names=ifelse(is.null(names_col), removeExt(targets$FileName), targets[,names_col]))
-  
-  
+normalize.agilent = function(x, offset=10){
+
   y = backgroundCorrect(x, method="normexp", offset=offset)
   y = normalizeBetweenArrays(y, method="quantile")
   
@@ -755,7 +755,50 @@ agilent.limma = function(targets, expr_dir, model, names_col=NULL, coef=2, offse
   
   expr = y[y$genes$ControlType==0 & isexpr,]
   expr.ave = avereps(expr, ID=expr$genes[,"ProbeName"])
+  expr.ave
+}
+
+agilent.limma = function(targets, expr_dir, model, names=NULL, coef=2,
+                         offset=10){
+
+  mm = model.matrix(model, targets)
+  x = read.agilent(targets, names)
+
+  y = normalize.agilent(x, offset=offset)
   
   topTable(eBayes(lmFit(expr.ave, mm), trend=TRUE), coef=coef, n=Inf, adjust.method="fdr")
   
 }
+
+glht.fit.ez = function(dat, clin, model, comparison, mc.cores=4){
+  # this is used for fitting lme4 functions, where a model is, e.g.
+  # ~ disease + age + (1|family)
+  # with comparison of 'diseaseCOPD - diseaseIPF = 0' as would be
+  # specified to multcomp::glht
+  # this function parallelizes that and returns the pvalue, coefficient, and
+  # t-statistic
+  library(lme4)
+  library(multcomp)
+  library(parallel)
+
+  res = mclapply(1:nrow(dat), function(i){
+    y = dat[i,]
+    mod = lmer(as.formula(model), clin)    
+    r = glht.fit.one(y, mod, comparison)
+    
+    r$probe = rownames(dat)[i]
+    r$cmp = rownames(r)
+    rownames(r) = NULL
+    r
+  }, mc.cores=mc.cores)
+  do.call("rbind", res)
+}
+
+glht.fit.one = function(y, mod, comparison){
+
+  s = summary(glht(mod, linfct=comparison))
+  data.frame(pvalues=s$test$pvalues,
+             tstats=s$test$tstat,
+             coefficients=s$test$coefficients)
+}
+
