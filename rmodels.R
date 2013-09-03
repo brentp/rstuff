@@ -838,7 +838,7 @@ agilent.limma = function(targets, expr_dir, model, names=NULL, coef=2,
 
   y = normalize.agilent(x, offset=offset)
   
-  topTable(eBayes(lmFit(expr.ave, mm), trend=TRUE), coef=coef, n=Inf, adjust.method="fdr")
+  topTable(eBayes(lmFit(y, mm), trend=TRUE), coef=coef, n=Inf, adjust.method="fdr")
   
 }
 
