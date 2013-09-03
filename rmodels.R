@@ -10,6 +10,44 @@ genomic_control = function(pvals, mid.fn=median){
     mid.fn(qchisq(pvals, df=1, lower.tail=F)) / 0.4549
 }
 
+spia.ez = function(symbols, values, top){
+    if(length(symbols) != length(values)){
+        stop("must send in a list of gene symbols with corresponding (logFC) values")
+    }
+    if(length(top) != length(values)){
+        stop("must send in a list booleans with TRUE indicating genes of interest")
+    }
+
+    library(SPIA)
+    library(org.Hs.eg.db)
+
+    entrez = select(org.Hs.eg.db, keys=symbols, keytype="SYMBOL", cols="ENTREZID")
+    # subset to genes that have an entrez mapping
+    names(values) = symbols
+    names(symbols) = symbols
+    names(top) = symbols
+
+
+    # select to those that were converted
+    values = values[entrez[,1]]
+    symbols = symbols[entrez[,1]]
+    top = top[entrez[,1]]
+
+    save = !duplicated(entrez[,2])
+    values = values[save]
+    symbols = symbols[save]
+    top = top[save]
+
+    entrez.ids = entrez[save, 2]
+    names(values) = entrez.ids
+    names(symbols) = entrez.ids
+    names(top) = entrez.ids
+    print(head(top))
+    print(head(values[top]))
+    print(head(entrez.ids))
+    spia(de=values[top], all=entrez.ids, nB=200, organism="hsa") #, plots=TRUE)
+}
+
 # return pvalues after the genomic control correction
 gc.adjust = function(pvals){
     gc = genomic_control(pvals)
@@ -107,9 +145,13 @@ normalize.450k = function(fclin, out_prefix, base_path, id_col=1){
     return(M)
 }
 
-normalize.charm = function(sample_description, out_prefix, id_col=1){
+normalize.charm = function(sample_description, out_prefix, id_col=1, subject=NA){
     library(charm)
-    require(BSgenome.Hsapiens.UCSC.hg18)
+    if(is.na(subject)){
+        require(BSgenome.Hsapiens.UCSC.hg18)
+        subject=Hsapiens
+    }
+
     pd = read.tab(sample_description)
     rawData =  readCharm(files=pd$filename, sampleKey=pd, path="")
 
@@ -124,7 +166,7 @@ normalize.charm = function(sample_description, out_prefix, id_col=1){
     pData(rawData)$qual=qual$pmSignal
     rm(qual)
 
-    ctrlIdx = getControlIndex(rawData, subject=Hsapiens, noCpGWindow=600)
+    ctrlIdx = getControlIndex(rawData, subject=subject, noCpGWindow=600)
     p  = methp(rawData, controlIndex=ctrlIdx, betweenSampleNorm="quantile")
     message("DIMS:")
     message(paste(dim(p), collapse=" "))
@@ -282,37 +324,36 @@ write.matrix = function(mat, file, name="probe", quote=FALSE, sep="\t", digits=3
 }    
 
 
-peer.limma.ez = function(data, clin, model,
+peer.limma.ez = function(data, clin, model=NULL,
                 prefix="results/peer.limma.",
                 contrasts=NULL, probe_len=1,
                 batch_correct=5){
     #https://github.com/PMBio/peer/wiki/Tutorial
     coef = 2
 
+    if(!is.null(model)){
     # the first term is always the variable of interest.
-    full_formula = as.formula(model)
-    err.log("full model:", full_formula)
+        full_formula = as.formula(model)
+        err.log("full model:", full_formula)
 
-    # remove any rows with na
-    complete = complete.cases(clin[,attr(terms(full_formula), "term.labels")])
+        # remove any rows with na
+        complete = complete.cases(clin[,attr(terms(full_formula), "term.labels"), drop=TRUE])
+        mod  = model.matrix(full_formula, data=clin)
+    } else { # they sent in a matrix, not a formula
+        complete = complete.cases(clin)
+        mod  = as.matrix(clin[complete,], ncol=ncol(clin))
+    }
+
     err.log("removing:", sum(!complete), "because of missing data")
     err.log("leaving:", sum(complete), "rows of data.")
     data_complete = as.matrix(data[,complete])
     rm(data); gc()
 
-    mod  = model.matrix(full_formula, data=clin)
 
 
     if(!is.na(batch_correct) && as.logical(batch_correct)){
         n_factors = as.integer(batch_correct)
-        peer_factors = run.peer(mod, t(data_complete), prefix, n_factors)
-        modpeer = cbind(mod, peer_factors)
-        write.table(modpeer, sep="\t", row.names=T, file=paste(prefix, "mod.peer.", n_factors, ".txt", sep=""), quote=F)
-
-        # we remove the batch effects from the data, rather than including the
-        # peers as covariates.
-        data_complete = cleanY(data_complete, mod, peer_factors)
-        write.matrix(data_complete, file=paste(prefix, "cleaned.", n_factors, ".y.txt", sep=""))
+        data_complete = run.peer(mod, data_complete, prefix, n_factors)
     }
     # including all peer factors, just include those before 1/alpha levels off?
     fit = limma.ez(data_complete, mod, coef, contrasts, prefix, probe_len)
@@ -320,27 +361,58 @@ peer.limma.ez = function(data, clin, model,
 }
 
 
-run.peer = function(mod, data_complete, prefix=NULL, n_factors=5){
+run.peer = function(mod, data_complete, prefix, n_factors=5){
     library(peer)
     peer_obj = PEER()
+    stopifnot(nrow(mod) == ncol(data_complete))
+    probes = rownames(data_complete)
+    data_complete = t(data_complete)
+
+    # set sensible defaults
     PEER_setCovariates(peer_obj, mod)
     PEER_setTolerance(peer_obj, 1e-10)
     PEER_setVarTolerance(peer_obj, 1e-10)
     PEER_setNmax_iterations(peer_obj, 1000)
+
+    #PEER_setTolerance(peer_obj, 1e-4)
+    #PEER_setVarTolerance(peer_obj, 1e-12)
+    #PEER_setNmax_iterations(peer_obj, 195)
     PEER_setPhenoMean(peer_obj, data_complete)
+
     nK = min(n_factors, nrow(data_complete) - ncol(mod) - 1)
     PEER_setNk(peer_obj, nK)
     err.log("set number of factors to infer as", nK)
+
     PEER_update(peer_obj)
     modpeer = PEER_getX(peer_obj)
-    if(!is.null(prefix)){
-        f = paste(prefix, "peer.alpha.txt", sep="")
-        write.table(PEER_getAlpha(peer_obj), file=f, row.names=F, sep="\t")
-    }
+    wgt_all = PEER_getW(peer_obj)
+
+    f = paste(prefix, "peer.alpha.txt", sep="")
+    write.table(PEER_getAlpha(peer_obj), file=f, row.names=F, sep="\t")
+
     colnames(modpeer) = c(colnames(mod), paste('peer_', 1:(ncol(modpeer) - ncol(mod)), sep=""))
     rownames(modpeer) = rownames(mod)
-    # return only the peer columns.
-    return(modpeer[,(ncol(mod) + 1):(ncol(modpeer))])
+    write.matrix(modpeer, file=paste0(prefix, "peer.", n_factors, ".mod.txt"))
+
+    colnames(wgt_all) = colnames(modpeer)
+    rownames(wgt_all) = probes
+
+    # regres out only the peer columns.
+    peer_cols = (ncol(mod) + 1):(ncol(modpeer))
+    peer_factors = modpeer[,peer_cols]
+    peer_wgts = wgt_all[,peer_cols]
+
+
+    write.matrix(wgt_all, file=paste0(prefix, "peer.", n_factors, ".weights.txt"))
+
+    cleanY = t(data_complete - (peer_factors %*% t(peer_wgts)))
+    if(any(is.na(cleanY))){
+        stop("NAs in cleanY")
+    }
+    rownames(cleanY) = probes
+    colnames(cleanY) = rownames(mod)
+    write.matrix(cleanY, file=paste(prefix, "cleaned.", n_factors, ".y.txt", sep=""))
+    cleanY
 }
 
 
@@ -494,8 +566,8 @@ get_marker_locs = function(names){
 }
 
 
-library(ChIPpeakAnno)
-data(TSS.human.NCBI36)
+#library(ChIPpeakAnno)
+#data(TSS.human.NCBI36)
 
 matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
                             expr_locs, marker_locs=NULL,
