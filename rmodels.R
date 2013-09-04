@@ -863,14 +863,16 @@ glht.fit.ez = function(dat, clin, model, comparison, mc.cores=4){
     rownames(r) = NULL
     r
   }, mc.cores=mc.cores)
-  do.call("rbind", res)
+  res = do.call("rbind", res)
+  res$qvalue = p.adjust(res$pvalue, "fdr")
+  res 
 }
 
 glht.fit.one = function(y, mod, comparison){
 
   s = summary(glht(mod, linfct=comparison))
-  data.frame(pvalues=s$test$pvalues,
-             tstats=s$test$tstat,
-             coefficients=s$test$coefficients)
+  data.frame(pvalue=s$test$pvalues,
+             t=s$test$tstat,
+             coefficient=s$test$coefficients)
 }
 
