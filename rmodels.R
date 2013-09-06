@@ -104,6 +104,30 @@ shared_rows_cols = function(a, b, acolname=NA){
 }
 
 
+normalize.450K.method = function(targets, method=c("dasen", "swan"), id_col=1, prefix=NULL){
+    library('minfi')
+    library('wateRmelon')
+    rgset = read.450k.exp(targets=targets, extended=TRUE)
+    qcReport(rgset, sampNames=targets$StudyID, sampGroups=targets$Sample_Plate)
+    if(!is.null(prefix)){
+        clin2 = pData(rgset)
+        write.table(clin2, file=paste0(prefix, "clin.txt"), sep="\t", row.names=F, quote=F)
+    }   
+    rgset.pf = pfilter(rgset)
+    if(method == "dasen"){
+        m.norm = Beta2M(dasen(rgset.pf))
+    } else {
+        #detP = detectionP(rgset)
+        #failed = detP > 0.01
+        #bad_probes = rowMeans(failed) > 0.5
+        m.norm = getM(preprocessSWAN(rgset, rgset.pf))
+    }
+    colnames(m.norm) = targets[, id_col]
+    if(!is.null(prefix)){
+        write.matrix(m.norm, file=paste0(prefix, method, ".M.txt"))
+    }
+    return(m.norm)
+}   
 
 normalize.450k = function(fclin, out_prefix, base_path, id_col=1){
     library(minfi)
