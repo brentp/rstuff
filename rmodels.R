@@ -112,7 +112,7 @@ normalize.450K.method = function(targets, method=c("dasen", "swan"), id_col=1, p
     if(!is.null(prefix)){
         clin2 = pData(rgset)
         write.table(clin2, file=paste0(prefix, "clin.txt"), sep="\t", row.names=F, quote=F)
-    }   
+    }
     rgset.pf = pfilter(rgset)
     if(method == "dasen"){
         m.norm = Beta2M(dasen(rgset.pf))
@@ -127,7 +127,7 @@ normalize.450K.method = function(targets, method=c("dasen", "swan"), id_col=1, p
         write.matrix(m.norm, file=paste0(prefix, method, ".M.txt"))
     }
     return(m.norm)
-}   
+}
 
 normalize.450k = function(fclin, out_prefix, base_path, id_col=1){
     library(minfi)
