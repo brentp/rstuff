@@ -378,6 +378,7 @@ peer.limma.ez = function(data, clin, model=NULL,
     if(!is.na(batch_correct) && as.logical(batch_correct)){
         n_factors = as.integer(batch_correct)
         data_complete = run.peer(mod, data_complete, prefix, n_factors)
+        prefix = paste(prefix, batch_correct, ".")
     }
     # including all peer factors, just include those before 1/alpha levels off?
     fit = limma.ez(data_complete, mod, coef, contrasts, prefix, probe_len)
