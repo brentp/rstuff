@@ -1,5 +1,6 @@
 library(limma)
 library(gtools)
+library(data.table)
 
 options(scipen=4, stringsAsFactors=FALSE) # stop it from printing 1e6 instead of 1000000
 
@@ -867,9 +868,9 @@ agilent.limma = function(targets, expr_dir, model, names=NULL, coef=2,
   
 }
 
-glht.fit.ez = function(dat, clin, model, comparison, mc.cores=4){
+glht.fit.ez = function(dat, clin, model_str, comparison, mc.cores=4){
   # this is used for fitting lme4 functions, where a model is, e.g.
-  # ~ disease + age + (1|family)
+  # ~ 0 + disease + age + (1|family)
   # with comparison of 'diseaseCOPD - diseaseIPF = 0' as would be
   # specified to multcomp::glht
   # this function parallelizes that and returns the pvalue, coefficient, and
@@ -877,24 +878,31 @@ glht.fit.ez = function(dat, clin, model, comparison, mc.cores=4){
   library(lme4)
   library(multcomp)
   library(parallel)
+  model = gsub("^\\s+", "", as.character(model_str)) # remove initial whitespace
+  if(substring(model, 1, 1) == "~"){
+    model = paste0("y ", model)
+  } else { 
+    if(!substring(model, 1, 1) == "y"){
+        stop(paste("model should start with '~':", model))
+    }
+  }
 
   res = mclapply(1:nrow(dat), function(i){
+    if(i %% 10000 == 0){ message(paste("at record", i)) }
     y = dat[i,]
     mod = lmer(as.formula(model), clin)    
     r = glht.fit.one(y, mod, comparison)
-    
     r$probe = rownames(dat)[i]
     r$cmp = rownames(r)
     rownames(r) = NULL
     r
   }, mc.cores=mc.cores)
-  res = do.call("rbind", res)
+  res = rbindlist(res)
   res$qvalue = p.adjust(res$pvalue, "fdr")
   res 
 }
 
 glht.fit.one = function(y, mod, comparison){
-
   s = summary(glht(mod, linfct=comparison))
   data.frame(pvalue=s$test$pvalues,
              t=s$test$tstat,
