@@ -1,5 +1,6 @@
 library(limma)
 library(gtools)
+library(data.table)
 
 options(scipen=4, stringsAsFactors=FALSE) # stop it from printing 1e6 instead of 1000000
 
@@ -887,22 +888,21 @@ glht.fit.ez = function(dat, clin, model_str, comparison, mc.cores=4){
   }
 
   res = mclapply(1:nrow(dat), function(i){
+    if(i %% 10000 == 0){ message(paste("at record", i)) }
     y = dat[i,]
     mod = lmer(as.formula(model), clin)    
     r = glht.fit.one(y, mod, comparison)
-    
     r$probe = rownames(dat)[i]
     r$cmp = rownames(r)
     rownames(r) = NULL
     r
   }, mc.cores=mc.cores)
-  res = do.call("rbind", res)
+  res = rbindlist(res)
   res$qvalue = p.adjust(res$pvalue, "fdr")
   res 
 }
 
 glht.fit.one = function(y, mod, comparison){
-
   s = summary(glht(mod, linfct=comparison))
   data.frame(pvalue=s$test$pvalues,
              t=s$test$tstat,
