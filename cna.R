@@ -1,0 +1,47 @@
+intensity.450k = function(targets, build="hg19", id_col=1){
+    library('minfi')
+    rgset = read.450k.exp(targets=targets, extended=TRUE)
+    #locs = mapToGenome(rgset, genomeBuild=build)
+    locs = getLocations(rgset)
+    #rgset.pf = pfilter(rgset)
+    mset = preprocessRaw(rgset)
+    intensity = getMeth(mset) + getUnmeth(mset)
+    colnames(intensity) = targets[,id_col]
+    stopifnot(nrow(intensity) == length(locs@seqnames))
+    rownames(intensity) = paste(locs@seqnames, locs@ranges@start, sep=":")
+    return(intensity)
+}
+
+# this is copied from the bioconductor ChAMP package and simplified
+# for my understanding. ... and parallellized.
+cna.450k = function(targets, prefix="cn.450k", mc.cores=6){
+    library(DNAcopy)
+    library(preprocessCore)
+    library(parallel)
+    intensity = intensity.450k(targets)
+    write.table(intensity, row.names=T, sep="\t", file="intensity.txt", quote=F)
+    samples = colnames(intensity)
+    intsqn = log2(normalize.quantiles(as.matrix(intensity)))
+    colnames(intsqn) = samples
+    
+
+    chrom = unlist(lapply(strsplit(rownames(intensity), ":", fixed=TRUE),
+                           function(r) r[[1]]))
+    pos = unlist(lapply(strsplit(rownames(intensity), ":", fixed=TRUE),
+                 function(r) as.integer(r[[2]])))
+
+    refs = rowMeans(intsqn) # use the mean of all samples as the reference
+
+    mclapply(1:ncol(intsqn), function(i){
+        log.ratio = intsqn[, i, drop=FALSE] - refs
+        CNA.obj = CNA(log.ratio, chrom, pos, data.type="logratio",
+                            sampleid=samples[i])
+        CNA.obj = smooth.CNA(CNA.obj)
+        CNA.obj = segment(CNA.obj, verbose=1, alpha=0.001,
+                          undo.splits="sdundo", undo.SD=2)
+        segs = CNA.obj$output
+        write.table(segs, sep="\t", col.names=T, row.names=F, quote=F, 
+                    file=paste0(prefix, samples[i], ".txt"))
+        message(paste0(prefix, samples[i], ".txt"))
+    }, mc.cores=mc.cores)
+}
