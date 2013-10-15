@@ -18,7 +18,11 @@ cna.450k = function(targets, prefix="cn.450k", mc.cores=6){
     library(DNAcopy)
     library(preprocessCore)
     library(parallel)
+
     intensity = intensity.450k(targets)
+    intensity = intensity[grep('chr[Y|X]', rownames(intensity),
+                               perl=TRUE, invert=TRUE),]
+
     #intensity = read.mat('intensity.txt')
     #write.table(intensity, row.names=T, sep="\t", file="intensity.txt", quote=F)
     samples = colnames(intensity)
