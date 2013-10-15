@@ -32,7 +32,7 @@ cna.450k = function(targets, prefix="cn.450k", mc.cores=6){
 
     refs = rowMeans(intsqn) # use the mean of all samples as the reference
 
-    mclapply(1:ncol(intsqn), function(i){
+    tmp = mclapply(1:ncol(intsqn), function(i){
         log.ratio = intsqn[, i, drop=FALSE] - refs
         CNA.obj = CNA(log.ratio, chrom, pos, data.type="logratio",
                             sampleid=samples[i])
@@ -40,6 +40,7 @@ cna.450k = function(targets, prefix="cn.450k", mc.cores=6){
         CNA.obj = segment(CNA.obj, verbose=1, alpha=0.001,
                           undo.splits="sdundo", undo.SD=2)
         segs = CNA.obj$output
+        segs = segs[order(segs$chrom, segs$loc.start),!colnames(segs) == "ID"]
         write.table(segs, sep="\t", col.names=T, row.names=F, quote=F, 
                     file=paste0(prefix, samples[i], ".txt"))
         message(paste0(prefix, samples[i], ".txt"))
