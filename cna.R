@@ -19,30 +19,39 @@ cna.450k = function(targets, prefix="cn.450k", mc.cores=6){
     library(preprocessCore)
     library(parallel)
     intensity = intensity.450k(targets)
-    write.table(intensity, row.names=T, sep="\t", file="intensity.txt", quote=F)
+    #intensity = read.mat('intensity.txt')
+    #write.table(intensity, row.names=T, sep="\t", file="intensity.txt", quote=F)
     samples = colnames(intensity)
     intsqn = log2(normalize.quantiles(as.matrix(intensity)))
     colnames(intsqn) = samples
     
-
     chrom = unlist(lapply(strsplit(rownames(intensity), ":", fixed=TRUE),
                            function(r) r[[1]]))
     pos = unlist(lapply(strsplit(rownames(intensity), ":", fixed=TRUE),
                  function(r) as.integer(r[[2]])))
 
-    refs = rowMeans(intsqn) # use the mean of all samples as the reference
+    #refs = rowMeans(intsqn) # use the mean of all samples as the reference
+    # median should handle places where we really see a big difference in
+    # cases
+    refs = apply(intsqn, 1, median)
 
     tmp = mclapply(1:ncol(intsqn), function(i){
         log.ratio = intsqn[, i, drop=FALSE] - refs
         CNA.obj = CNA(log.ratio, chrom, pos, data.type="logratio",
                             sampleid=samples[i])
         CNA.obj = smooth.CNA(CNA.obj)
-        CNA.obj = segment(CNA.obj, verbose=1, alpha=0.001,
-                          undo.splits="sdundo", undo.SD=2)
+        CNA.obj = segment(CNA.obj, verbose=1, alpha=0.005,
+                          undo.splits="sdundo", undo.SD=1.96)
+
+        png(paste0(prefix, samples[i], ".png"))
+        plot(CNA.obj, plot.type="w")
+        dev.off()
+
         segs = CNA.obj$output
         segs = segs[order(segs$chrom, segs$loc.start),!colnames(segs) == "ID"]
         write.table(segs, sep="\t", col.names=T, row.names=F, quote=F, 
                     file=paste0(prefix, samples[i], ".txt"))
         message(paste0(prefix, samples[i], ".txt"))
+        return(TRUE)
     }, mc.cores=mc.cores)
 }
