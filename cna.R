@@ -20,8 +20,8 @@ cna.450k = function(targets, prefix="cn.450k", mc.cores=6){
     library(parallel)
 
     intensity = intensity.450k(targets)
-    intensity = intensity[grep('chr[Y|X]', rownames(intensity),
-                               perl=TRUE, invert=TRUE),]
+    #intensity = intensity[grep('chr[Y|X]', rownames(intensity),
+    #                           perl=TRUE, invert=TRUE),]
 
     #intensity = read.mat('intensity.txt')
     #write.table(intensity, row.names=T, sep="\t", file="intensity.txt", quote=F)
@@ -44,7 +44,7 @@ cna.450k = function(targets, prefix="cn.450k", mc.cores=6){
         CNA.obj = CNA(log.ratio, chrom, pos, data.type="logratio",
                             sampleid=samples[i])
         CNA.obj = smooth.CNA(CNA.obj)
-        CNA.obj = segment(CNA.obj, verbose=1, alpha=0.005,
+        CNA.obj = segment(CNA.obj, verbose=1, alpha=0.01,
                           undo.splits="sdundo", undo.SD=1.96)
 
         png(paste0(prefix, samples[i], ".png"))
