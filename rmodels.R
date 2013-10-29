@@ -109,6 +109,8 @@ normalize.450K.method = function(targets, method=c("dasen", "swan"), id_col=1, p
     library('minfi')
     library('wateRmelon')
     rgset = read.450k.exp(targets=targets, extended=TRUE)
+    locs = getLocations(rgset)
+
     qcReport(rgset, sampNames=targets$StudyID, sampGroups=targets$Sample_Plate)
     if(!is.null(prefix)){
         clin2 = pData(rgset)
@@ -123,7 +125,9 @@ normalize.450K.method = function(targets, method=c("dasen", "swan"), id_col=1, p
         #bad_probes = rowMeans(failed) > 0.5
         m.norm = getM(preprocessSWAN(rgset, rgset.pf))
     }
+    rownames(m.norm) = paste(locs@seqnames, locs@ranges@start, sep=":")
     colnames(m.norm) = targets[, id_col]
+    m.norm = m.norm[order(locs@seqnames, locs@ranges@start),]
     if(!is.null(prefix)){
         write.matrix(m.norm, file=paste0(prefix, method, ".M.txt"))
     }
@@ -474,12 +478,15 @@ limma.ez = function(data, mod, coef, contrasts, prefix, probe_len=1, genome_cont
         }
         chroms = unlist(lapply(strsplit(as.character(tt$ID), ":", fixed=TRUE), function(r){ r[1] }))
         starts = unlist(lapply(strsplit(as.character(tt$ID), ":", fixed=TRUE), function(r){ as.numeric(r[2]) - 1 }))
-        ends = starts + probe_len
-        err.log(length(chroms))
-        err.log(length(starts))
-        err.log(colnames(tt))
+        if(!any(is.na(starts))){
+            ends = starts + probe_len
+            err.log(length(chroms))
+            err.log(length(starts))
+            err.log(colnames(tt))
 
-        tt = data.frame(chrom=chroms, start=starts, end=ends, tt[,colnames(tt) != "ID"])
+            tt = data.frame(chrom=chroms, start=starts, end=ends, tt[,colnames(tt) != "ID"])
+            tt = tt[order(chroms, starts),]
+        }
 
         write.table(tt, row.names=F, sep="\t", quote=F, file=paste(prefix, ".", c, ".pvals.bed", sep=""))
     }
