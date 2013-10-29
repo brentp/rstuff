@@ -107,27 +107,31 @@ shared_rows_cols = function(a, b, acolname=NA){
 
 normalize.450K.method = function(targets, method=c("dasen", "swan"), id_col=1, prefix=NULL){
     library('minfi')
-    library('wateRmelon')
     rgset = read.450k.exp(targets=targets, extended=TRUE)
-    locs = getLocations(rgset)
 
     qcReport(rgset, sampNames=targets$StudyID, sampGroups=targets$Sample_Plate)
     if(!is.null(prefix)){
         clin2 = pData(rgset)
         write.table(clin2, file=paste0(prefix, "clin.txt"), sep="\t", row.names=F, quote=F)
     }
-    rgset.pf = pfilter(rgset)
     if(method == "dasen"){
+        library('wateRmelon')
+        rgset.pf = pfilter(rgset)
         m.norm = Beta2M(dasen(rgset.pf))
     } else {
-        #detP = detectionP(rgset)
-        #failed = detP > 0.01
-        #bad_probes = rowMeans(failed) > 0.5
-        m.norm = getM(preprocessSWAN(rgset, rgset.pf))
+        detP = detectionP(rgset)
+        failed = detP > 0.01
+        bad_probes = rowMeans(failed) > 0.10
+        rgset.pf = preprocessSWAN(rgset)[!bad_probes,]
+        m.norm = getM(rgset.pf)
     }
+
+    locs = getLocations(rgset.pf)
     rownames(m.norm) = paste(locs@seqnames, locs@ranges@start, sep=":")
     colnames(m.norm) = targets[, id_col]
-    m.norm = m.norm[order(locs@seqnames, locs@ranges@start),]
+    snames = as.character(locs@seqnames)
+    starts = as.integer(locs@ranges@start)
+    m.norm = m.norm[order(snames, starts),]
     if(!is.null(prefix)){
         write.matrix(m.norm, file=paste0(prefix, method, ".M.txt"))
     }
