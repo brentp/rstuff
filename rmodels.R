@@ -405,7 +405,7 @@ peer.factors = function(mod, data_complete, n_factors=5){
     # set sensible defaults
     PEER_setCovariates(peer_obj, mod)
     PEER_setTolerance(peer_obj, 1e-10)
-    PEER_setVarTolerance(peer_obj, 1e-10)
+    PEER_setVarTolerance(peer_obj, 1e-12)
     PEER_setNmax_iterations(peer_obj, 1000)
     PEER_setPhenoMean(peer_obj, data_complete)
 
@@ -413,9 +413,10 @@ peer.factors = function(mod, data_complete, n_factors=5){
     PEER_setNk(peer_obj, nK)
     PEER_update(peer_obj)
 
-    modpeer = PEER_getX(peer_obj)[,(1 + ncol(mod)):(1 + ncol(mod) + n_factors)]
+    X = PEER_getX(peer_obj)
+    modpeer = X[,(ncol(mod) + 1):(ncol(mod) + nK)]
 
-    colnames(modpeer) = paste('peer_', 1:ncol(modpeer)
+    colnames(modpeer) = paste('peer_', 1:ncol(modpeer))
     rownames(modpeer) = rownames(mod)
     return(modpeer)
 }
