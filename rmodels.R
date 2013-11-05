@@ -480,8 +480,8 @@ limma.ez = function(data, mod, coef, contrasts, prefix, probe_len=1, genome_cont
             }
             tt$adj.P.Val = p.adjust(tt$P.Value, "fdr")
         }
-        chroms = unlist(lapply(strsplit(as.character(tt$ID), ":", fixed=TRUE), function(r){ r[1] }))
-        starts = unlist(lapply(strsplit(as.character(tt$ID), ":", fixed=TRUE), function(r){ as.numeric(r[2]) - 1 }))
+        chroms = unlist(lapply(strsplit(as.character(rownames(tt)), ":", fixed=TRUE), function(r){ r[1] }))
+        starts = unlist(lapply(strsplit(as.character(rownames(tt)), ":", fixed=TRUE), function(r){ as.numeric(r[2]) - 1 }))
         if(!any(is.na(starts))){
             ends = starts + probe_len
             err.log(length(chroms))
