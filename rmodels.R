@@ -87,7 +87,7 @@ read.mat = function(fname, sep="\t"){
     s$fileOmitCharacters = 'NA';
     s$fileSkipRows = 1;
     s$fileSkipColumns = 1;
-    s$fileSliceSize = 18000;
+    s$fileSliceSize = 25000;
     s$LoadFile(fname);
     return(as.matrix(s))
 }
@@ -394,6 +394,31 @@ peer.limma.ez = function(data, clin, model=NULL,
     return(fit)
 }
 
+
+peer.factors = function(mod, data_complete, n_factors=5){
+    library(peer)
+    peer_obj = PEER()
+    stopifnot(nrow(mod) == ncol(data_complete))
+    probes = rownames(data_complete)
+    data_complete = t(data_complete)
+    
+    # set sensible defaults
+    PEER_setCovariates(peer_obj, mod)
+    PEER_setTolerance(peer_obj, 1e-10)
+    PEER_setVarTolerance(peer_obj, 1e-10)
+    PEER_setNmax_iterations(peer_obj, 1000)
+    PEER_setPhenoMean(peer_obj, data_complete)
+
+    nK = min(n_factors, nrow(data_complete) - ncol(mod) - 1)
+    PEER_setNk(peer_obj, nK)
+    PEER_update(peer_obj)
+
+    modpeer = PEER_getX(peer_obj)[,(1 + ncol(mod)):(1 + ncol(mod) + n_factors)]
+
+    colnames(modpeer) = paste('peer_', 1:ncol(modpeer)
+    rownames(modpeer) = rownames(mod)
+    return(modpeer)
+}
 
 run.peer = function(mod, data_complete, prefix, n_factors=5){
     library(peer)
@@ -845,10 +870,11 @@ mart_anno = function(peakList, dataset="hsapiens_gene_ensembl",
     return(output_file)
 }
 
-read.agilent = function(targets, names=NULL){
+read.agilent = function(targets, names=NULL, path=NULL){
   read.maimages(targets, source="agilent", green.only=TRUE, 
-                    names=names)
+                    names=names, path=path)
 }
+
 
 normalize.agilent = function(x, offset=10){
 
@@ -860,18 +886,18 @@ normalize.agilent = function(x, offset=10){
   neg95 = apply(y$E[y$genes$ControlType==-1,], 2, function(x) quantile(x, p=0.95))
   
   cutoff = matrix(1.1 * neg95, nrow(y), ncol(y), byrow=TRUE)
-  isexpr = rowSums(y$E > cutoff) >= (nrow(targets) / 2)
+  isexpr = rowSums(y$E > cutoff) >= (ncol(x) / 3)
   
   expr = y[y$genes$ControlType==0 & isexpr,]
   expr.ave = avereps(expr, ID=expr$genes[,"ProbeName"])
   expr.ave
 }
 
-agilent.limma = function(targets, expr_dir, model, names=NULL, coef=2,
-                         offset=10){
+agilent.limma = function(targets, model, names=NULL, coef=2,
+                         offset=10, path=NULL){
 
   mm = model.matrix(model, targets)
-  x = read.agilent(targets, names)
+  x = read.agilent(targets, names, path=path)
 
   y = normalize.agilent(x, offset=offset)
   
