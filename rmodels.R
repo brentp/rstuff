@@ -114,6 +114,7 @@ normalize.450K.method = function(targets, method=c("dasen", "swan"), id_col=1, p
         clin2 = pData(rgset)
         write.table(clin2, file=paste0(prefix, "clin.txt"), sep="\t", row.names=F, quote=F)
     }
+    m.norm = NA
     if(method == "dasen"){
         library('wateRmelon')
         rgset.pf = pfilter(rgset)
@@ -123,10 +124,16 @@ normalize.450K.method = function(targets, method=c("dasen", "swan"), id_col=1, p
         failed = detP > 0.01
         bad_probes = rowMeans(failed) > 0.10
         rgset.pf = preprocessSWAN(rgset)[!bad_probes,]
+        failed = failed[!bad_probes,]
         m.norm = getM(rgset.pf)
+        message(sprintf("setting %i probes with detectionP > 0.01 to NA", sum(failed)))
+        m.norm[failed] = NA
     }
-
     locs = getLocations(rgset.pf)
+
+    message(sprintf("seqnames length: %d, dim: %d, %d", length(locs@seqnames),
+                nrow(locs@ranges@start), ncol(locs@ranges@start)))
+
     rownames(m.norm) = paste(locs@seqnames, locs@ranges@start, sep=":")
     colnames(m.norm) = targets[, id_col]
     snames = as.character(locs@seqnames)
@@ -498,6 +505,12 @@ limma.ez = function(data, mod, coef, contrasts, prefix, probe_len=1, genome_cont
         }
         err.log("getting p-values for:", c)
         tt = topTable(fit, coef=c, n=Inf, sort.by="none")
+
+        # calculate unmoderated t-statistic
+        ta = fit$coef[,c] / fit$stdev.unscaled[,c] / fit$sigma
+        tt$unmoderated.t = ta
+        tt$unmoderated.p = 2 * pt(-abs(ta), df=fit$df.residual[1])
+
         lambda = genomic_control(tt$P.Value)
         message(sprintf("genomic control value: %.2f", lambda))
         if(genome_control){
