@@ -474,7 +474,7 @@ run.peer = function(mod, data_complete, prefix, n_factors=5){
 
     cleanY = t(data_complete - (peer_factors %*% t(peer_wgts)))
     if(any(is.na(cleanY))){
-        stop("NAs in cleanY")
+        message("NAs in cleanY")
     }
     rownames(cleanY) = probes
     colnames(cleanY) = rownames(mod)
