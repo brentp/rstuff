@@ -355,6 +355,23 @@ remove_low_variance = function(mat, p_drop=0.25){
     mat[rvm > sort(rvm)[p_drop * length(rvm)],]
 }
 
+read.450k.manifest = function(fname, chrom_prefix="chr", version=c("hg19", "hg18")){
+    version=match.arg(version, c("hg19", "hg18"))
+    print(version)
+    df = read.delim(fname, sep=",", skip=7, quote="", stringsAsFactors=FALSE)
+    df$hg18_pos = paste0(chrom_prefix, df$Chromosome_36, ":", df$Coordinate_36)
+    df$hg19_pos = paste0(chrom_prefix, df$CHR, ":", df$MAPINFO)
+    df$Coordinate_36 = as.integer(df$Coordinate_36)
+    df$MAPINFO = as.integer(df$MAPINFO)
+    if(version == "hg18"){
+        pos = data.frame(chrom=paste0(chrom_prefix, df$Chromosome_36), start=df$Coordinate_36 - 1, end=df$Coordinate_36)
+    } else {
+        pos = data.frame(chrom=paste0(chrom_prefix, df$CHR), start=df$MAPINFO - 1, end=df$MAPINFO)
+    }
+    df = data.frame(pos, df)
+    df[order(df$chrom, df$start),]
+}
+
 
 write.matrix = function(mat, file, name="probe", quote=FALSE, sep="\t", digits=3, ...){
     mat = cbind(rownames(mat), format(round(mat, digits=digits), digits=digits, trim=TRUE))
