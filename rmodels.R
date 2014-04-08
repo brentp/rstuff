@@ -11,6 +11,16 @@ genomic_control = function(pvals, mid.fn=median){
     mid.fn(qchisq(pvals, df=1, lower.tail=F)) / 0.4549
 }
 
+stouffer_liptak = function(pvalues, sigma, lower.tail=TRUE){
+    qvalues = qnorm(pvalues, mean=0, sd=1, lower.tail=lower.tail)
+    C = chol(sigma)
+    Cm1 = solve(C) # C^-1
+    qvalues = Cm1 %*% qvalues # Qstar = C^-1 * Q
+    Cp = sum(qvalues) / sqrt(length(qvalues))
+    pstar = pnorm(Cp, mean=0, sd=1, lower.tail=lower.tail)
+    return(list(C=Cp, p=pstar))
+}
+
 spia.ez = function(symbols, values, top){
     if(length(symbols) != length(values)){
         stop("must send in a list of gene symbols with corresponding (logFC) values")
