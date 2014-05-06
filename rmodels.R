@@ -134,10 +134,7 @@ normalize.450K.method = function(targets, method=c("dasen", "swan"), id_col=1, p
         failed = detP > 0.01
         bad_probes = rowMeans(failed) > 0.10
         rgset.pf = preprocessSWAN(rgset)[!bad_probes,]
-        failed = failed[!bad_probes,]
         m.norm = getM(rgset.pf)
-        message(sprintf("setting %i probes with detectionP > 0.01 to NA", sum(failed)))
-        m.norm[failed] = NA
     }
     locs = getLocations(rgset.pf)
 
