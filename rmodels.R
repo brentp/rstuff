@@ -945,7 +945,7 @@ agilent.limma = function(targets, model, names=NULL, coef=2,
   
 }
 
-glht.fit.ez = function(dat, clin, model, comparison, mc.cores=4, group1=NULL){
+glht.fit.ez = function(dat, clin, model, comparison, mc.cores=4, icoef=FALSE){
   # this is used for fitting lme4 functions, where a model is, e.g.
   # ~ 0 + disease + age + (1|family)
   # with comparison of 'diseaseCOPD - diseaseIPF = 0' as would be
@@ -966,10 +966,7 @@ glht.fit.ez = function(dat, clin, model, comparison, mc.cores=4, group1=NULL){
     r$probe = rownames(dat)[i]
     r$cmp = rownames(r)
     rownames(r) = NULL
-    if(!is.null(group1)){
-        r$diff = mean(y[group1]) - mean(y[!(group1)])
-        r$idiff = ilogit(mean(y[group1])) - ilogit(mean(y[!(group1)]))
-    }
+    if(icoef) r$icoef = ilogit(r$coefficient) - 0.5
     r
   }, mc.cores=mc.cores)
   res = rbindlist(res)
