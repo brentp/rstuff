@@ -943,7 +943,7 @@ agilent.limma = function(targets, model, names=NULL, coef=2,
   
 }
 
-glht.fit.ez = function(dat, clin, model_str, comparison, mc.cores=4){
+glht.fit.ez = function(dat, clin, model, comparison, mc.cores=4, group1=NULL){
   # this is used for fitting lme4 functions, where a model is, e.g.
   # ~ 0 + disease + age + (1|family)
   # with comparison of 'diseaseCOPD - diseaseIPF = 0' as would be
@@ -953,28 +953,30 @@ glht.fit.ez = function(dat, clin, model_str, comparison, mc.cores=4){
   library(lme4)
   library(multcomp)
   library(parallel)
-  model = gsub("^\\s+", "", as.character(model_str)) # remove initial whitespace
-  if(substring(model, 1, 1) == "~"){
-    model = paste0("y ", model)
-  } else { 
-    if(!substring(model, 1, 1) == "y"){
-        stop(paste("model should start with '~':", model))
-    }
-  }
+  model = as.formula(model)
 
   res = mclapply(1:nrow(dat), function(i){
     if(i %% 10000 == 0){ message(paste("at record", i)) }
     y = dat[i,]
-    mod = lmer(as.formula(model), clin)    
+    mm = paste0(" y ~ ", paste0(as.character(model[[2]]), collapse=" + "))
+    mod = lmer(as.formula(mm), clin)
     r = glht.fit.one(y, mod, comparison)
     r$probe = rownames(dat)[i]
     r$cmp = rownames(r)
     rownames(r) = NULL
+    if(!is.null(group1)){
+        r$diff = mean(y[group1]) - mean(y[!(group1)])
+        r$idiff = ilogit(mean(y[group1])) - ilogit(mean(y[!(group1)]))
+    }
     r
   }, mc.cores=mc.cores)
   res = rbindlist(res)
   res$qvalue = p.adjust(res$pvalue, "fdr")
   res 
+}
+
+ilogit = function(n){
+    1 / (1 + exp(-n))
 }
 
 glht.fit.one = function(y, mod, comparison){
