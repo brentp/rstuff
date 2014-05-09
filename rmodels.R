@@ -98,7 +98,9 @@ read.mat = function(fname, sep="\t"){
     s$fileSkipRows = 1;
     s$fileSkipColumns = 1;
     s$fileSliceSize = 25000;
+    sink(stderr())
     s$LoadFile(fname);
+    sink()
     return(as.matrix(s))
 }
 
