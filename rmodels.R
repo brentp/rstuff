@@ -986,3 +986,70 @@ glht.fit.one = function(y, mod, comparison){
              coefficient=s$test$coefficients)
 }
 
+attributable.fraction = function(model, df, vars, col=as.character(model[[2]])){
+    library(MASS)
+    library(Matrix)
+    # most of this was written by Weiming Zhang.
+    # EXAMPLE: note that vars is a subset of the covs in model
+    # variables of interest
+    # > vars = c('chr1_6263874', 'chr1_21750368', 'chr1_21773847')
+    # > model <- asthma ~ age + gender + race_aa + race_hispanic + race_white +
+    # ...  chr1_6263874 + chr1_21750368 + chr1_21773847
+    # > df = read.delim('my.covariates.txt')
+    # print(attributable.fraction(model, df, vars))
+    fit <- glm(model, data=df, family=binomial(link="logit"))
+    ref.subset = df[, col] == FALSE
+    theta_hat <- unname(coefficients(fit))
+    alpha <- coefficients(fit)[[1]]
+
+    m_1 = sum(df[[col]])
+    m_0 = sum(!df[[col]])
+
+    x_i = model.matrix(model, df)
+    # set reference level for each methylation site use
+    # mean values of controls. But we may need better ones.
+    ref <- unname(colMeans(x_i[ref.subset,vars]))
+    z_i <- x_i #matrix(ref, nrow=nrow(x_i), ncol=ncol(x_i), byrow=T)
+    z_i[,vars] = t(matrix(ref, ncol=nrow(df), nrow=length(vars)))
+
+    s_hat <- exp((z_i-x_i)%*%theta_hat)
+    r_hat <- fitted.values(fit)
+    p_hat <- r_hat / m_1
+    af = c(1 - t(p_hat) %*% s_hat)
+    n_plus = nrow(x_i)
+    n = 1
+    pi_i = n / n_plus # pg 868 just after eqn (5)
+    # column vectors
+
+    w = n_plus * pi_i * r_hat * (1 - r_hat)
+    q = n_plus * pi_i * (1 - r_hat) / m_0
+
+    D_theta = t(z_i - x_i) %*% Diagonal(n_plus, s_hat) %*% p_hat + t(x_i) %*%
+                Diagonal(n_plus, w) %*% s_hat / m_1
+    D_n = Diagonal(n_plus, s_hat) %*% r_hat / m_1
+    V_a = m_1 * (Diagonal(n_plus, p_hat) - p_hat %*% t(p_hat))
+    V_b = m_0 * (Diagonal(n_plus, q) - q %*% t(q))
+    V_n = V_a + V_b
+
+    C_star = (solve(t(x_i) %*% (Diagonal(n_plus, w) %*% x_i)))
+    theta_hat = coefficients(fit)
+
+    C = vcov(fit)
+    C[1, 1] = C_star[1,1] - 1/m_1 - 1/m_0
+    # Q: how to make arrays conformable? had to transpose x_i not like paper
+    U = (C_star %*% t(x_i)) %*% (V_a - (Diagonal(n_plus, r_hat) %*% V_n))
+
+    var_af = t(D_theta) %*% C %*% D_theta + 
+             2 * t(D_theta) %*% U %*% D_n +
+             t(D_n) %*% V_n %*% D_n
+
+    af = af[[1]]
+    se.af = sqrt(var_af)[1, 1]
+    hi = 1 - (1 - af) * exp(-1.96 * se.af / (1 - af))
+    lo = 1 - (1 - af) * exp(1.96 * se.af / (1 - af))
+
+    list(af=af, sem=se.af, ci.95=c(lo, hi))
+
+}
+
+
