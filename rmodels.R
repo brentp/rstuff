@@ -98,7 +98,9 @@ read.mat = function(fname, sep="\t"){
     s$fileSkipRows = 1;
     s$fileSkipColumns = 1;
     s$fileSliceSize = 25000;
+    sink(stderr())
     s$LoadFile(fname);
+    sink()
     return(as.matrix(s))
 }
 
@@ -134,10 +136,7 @@ normalize.450K.method = function(targets, method=c("dasen", "swan"), id_col=1, p
         failed = detP > 0.01
         bad_probes = rowMeans(failed) > 0.10
         rgset.pf = preprocessSWAN(rgset)[!bad_probes,]
-        failed = failed[!bad_probes,]
         m.norm = getM(rgset.pf)
-        message(sprintf("setting %i probes with detectionP > 0.01 to NA", sum(failed)))
-        m.norm[failed] = NA
     }
     locs = getLocations(rgset.pf)
 
@@ -946,7 +945,7 @@ agilent.limma = function(targets, model, names=NULL, coef=2,
   
 }
 
-glht.fit.ez = function(dat, clin, model_str, comparison, mc.cores=4){
+glht.fit.ez = function(dat, clin, model, comparison, mc.cores=4, icoef=FALSE){
   # this is used for fitting lme4 functions, where a model is, e.g.
   # ~ 0 + disease + age + (1|family)
   # with comparison of 'diseaseCOPD - diseaseIPF = 0' as would be
@@ -956,28 +955,27 @@ glht.fit.ez = function(dat, clin, model_str, comparison, mc.cores=4){
   library(lme4)
   library(multcomp)
   library(parallel)
-  model = gsub("^\\s+", "", as.character(model_str)) # remove initial whitespace
-  if(substring(model, 1, 1) == "~"){
-    model = paste0("y ", model)
-  } else { 
-    if(!substring(model, 1, 1) == "y"){
-        stop(paste("model should start with '~':", model))
-    }
-  }
+  model = as.formula(model)
 
   res = mclapply(1:nrow(dat), function(i){
     if(i %% 10000 == 0){ message(paste("at record", i)) }
     y = dat[i,]
-    mod = lmer(as.formula(model), clin)    
+    mm = paste0(" y ~ ", paste0(as.character(model[[2]]), collapse=" + "))
+    mod = lmer(as.formula(mm), clin)
     r = glht.fit.one(y, mod, comparison)
     r$probe = rownames(dat)[i]
     r$cmp = rownames(r)
     rownames(r) = NULL
+    if(icoef) r$icoef = ilogit(r$coefficient) - 0.5
     r
   }, mc.cores=mc.cores)
   res = rbindlist(res)
   res$qvalue = p.adjust(res$pvalue, "fdr")
   res 
+}
+
+ilogit = function(n){
+    1 / (1 + exp(-n))
 }
 
 glht.fit.one = function(y, mod, comparison){
@@ -986,4 +984,71 @@ glht.fit.one = function(y, mod, comparison){
              t=s$test$tstat,
              coefficient=s$test$coefficients)
 }
+
+attributable.fraction = function(model, df, vars, col=as.character(model[[2]])){
+    library(MASS)
+    library(Matrix)
+    # most of this was written by Weiming Zhang.
+    # EXAMPLE: note that vars is a subset of the covs in model
+    # variables of interest
+    # > vars = c('chr1_6263874', 'chr1_21750368', 'chr1_21773847')
+    # > model <- asthma ~ age + gender + race_aa + race_hispanic + race_white +
+    # ...  chr1_6263874 + chr1_21750368 + chr1_21773847
+    # > df = read.delim('my.covariates.txt')
+    # print(attributable.fraction(model, df, vars))
+    fit <- glm(model, data=df, family=binomial(link="logit"))
+    ref.subset = df[, col] == FALSE
+    theta_hat <- unname(coefficients(fit))
+    alpha <- coefficients(fit)[[1]]
+
+    m_1 = sum(df[[col]])
+    m_0 = sum(!df[[col]])
+
+    x_i = model.matrix(model, df)
+    # set reference level for each methylation site use
+    # mean values of controls. But we may need better ones.
+    ref <- unname(colMeans(x_i[ref.subset,vars]))
+    z_i <- x_i #matrix(ref, nrow=nrow(x_i), ncol=ncol(x_i), byrow=T)
+    z_i[,vars] = t(matrix(ref, ncol=nrow(df), nrow=length(vars)))
+
+    s_hat <- exp((z_i-x_i)%*%theta_hat)
+    r_hat <- fitted.values(fit)
+    p_hat <- r_hat / m_1
+    af = c(1 - t(p_hat) %*% s_hat)
+    n_plus = nrow(x_i)
+    n = 1
+    pi_i = n / n_plus # pg 868 just after eqn (5)
+    # column vectors
+
+    w = n_plus * pi_i * r_hat * (1 - r_hat)
+    q = n_plus * pi_i * (1 - r_hat) / m_0
+
+    D_theta = t(z_i - x_i) %*% Diagonal(n_plus, s_hat) %*% p_hat + t(x_i) %*%
+                Diagonal(n_plus, w) %*% s_hat / m_1
+    D_n = Diagonal(n_plus, s_hat) %*% r_hat / m_1
+    V_a = m_1 * (Diagonal(n_plus, p_hat) - p_hat %*% t(p_hat))
+    V_b = m_0 * (Diagonal(n_plus, q) - q %*% t(q))
+    V_n = V_a + V_b
+
+    C_star = (solve(t(x_i) %*% (Diagonal(n_plus, w) %*% x_i)))
+    theta_hat = coefficients(fit)
+
+    C = vcov(fit)
+    C[1, 1] = C_star[1,1] - 1/m_1 - 1/m_0
+    # Q: how to make arrays conformable? had to transpose x_i not like paper
+    U = (C_star %*% t(x_i)) %*% (V_a - (Diagonal(n_plus, r_hat) %*% V_n))
+
+    var_af = t(D_theta) %*% C %*% D_theta + 
+             2 * t(D_theta) %*% U %*% D_n +
+             t(D_n) %*% V_n %*% D_n
+
+    af = af[[1]]
+    se.af = sqrt(var_af)[1, 1]
+    hi = 1 - (1 - af) * exp(-1.96 * se.af / (1 - af))
+    lo = 1 - (1 - af) * exp(1.96 * se.af / (1 - af))
+
+    list(af=af, sem=se.af, ci.95=c(lo, hi))
+
+}
+
 
