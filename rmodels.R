@@ -979,10 +979,15 @@ ilogit = function(n){
 }
 
 glht.fit.one = function(y, mod, comparison){
-  s = summary(glht(mod, linfct=comparison))
-  data.frame(pvalue=s$test$pvalues,
-             t=s$test$tstat,
-             coefficient=s$test$coefficients)
+  d = p.values.lmer(mod)$coefficients
+  data.frame(pvalue=d[[comparison, "p.value.LRT"]],
+             t=d[[comparison, "t value"]],
+             coefficient=d[[comparison, "Estimate"]])
+
+  #s = summary(glht(mod, linfct=comparison))
+  #data.frame(pvalue=s$test$pvalues,
+  #           t=s$test$tstat,
+  #           coefficient=s$test$coefficients))
 }
 
 attributable.fraction = function(model, df, vars, col=as.character(model[[2]])){
@@ -1051,4 +1056,36 @@ attributable.fraction = function(model, df, vars, col=as.character(model[[2]])){
 
 }
 
-
+# from: http://blog.lib.umn.edu/moor0554/canoemoore/2010/09/lmer_p-values_lrt.html
+p.values.lmer <- function(x) {
+  summary.model <- summary(x)
+  data.lmer <- data.frame(model.matrix(x))
+  names(data.lmer) <- names(fixef(x))
+  names(data.lmer) <- gsub(pattern=":", x=names(data.lmer), replacement=".", fixed=T)
+  names(data.lmer) <- ifelse(names(data.lmer)=="(Intercept)", "Intercept", names(data.lmer))
+  string.call <- strsplit(x=as.character(x@call), split=" + (", fixed=T)
+  var.dep <- unlist(strsplit(x=unlist(string.call)[2], " ~ ", fixed=T))[1]
+  vars.fixef <- names(data.lmer)
+  formula.ranef <- paste("+ (", string.call[[2]][-1], sep="")
+  formula.ranef <- paste(formula.ranef, collapse=" ")
+  formula.full <- as.formula(paste(var.dep, "~ -1 +", paste(vars.fixef, collapse=" + "), 
+                  formula.ranef))
+  data.ranef <- data.frame(x@frame[, 
+                which(names(x@frame) %in% names(ranef(x)))])
+  names(data.ranef) <- names(ranef(x))
+  data.lmer <- data.frame(x@frame[, 1], data.lmer, data.ranef)
+  names(data.lmer)[1] <- var.dep
+  out.full <- lmer(formula.full, data=data.lmer, REML=F)
+  p.value.LRT <- vector(length=length(vars.fixef))
+  for(i in 1:length(vars.fixef)) {
+    formula.reduced <- as.formula(paste(var.dep, "~ -1 +", paste(vars.fixef[-i], 
+                       collapse=" + "), formula.ranef))
+    out.reduced <- lmer(formula.reduced, data=data.lmer, REML=F)
+    out.LRT <- data.frame(anova(out.full, out.reduced))
+    p.value.LRT[i] <- round(out.LRT[2, 8], 3)
+  }
+  summary.model$coefficients <- cbind(summary.model$coefficients, p.value.LRT)
+  summary.model$methTitle <- c("\n", summary.model$methTitle, 
+                           "\n(p-values from comparing nested models fit by maximum likelihood)")
+    summary.model
+}
