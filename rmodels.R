@@ -794,7 +794,7 @@ matrix.eQTL.ez = function(expr_data, marker_data, clinical, model, prefix,
         cisDist = cis_dist,
         pvalue.hist = "qqplot");
 
-    jpeg(paste(prefix, "qq.plot.jpeg", sep=""))
+    png(paste(prefix, "qq.plot.png", sep=""))
     plot(me)
     dev.off()
     err.log("cis tests:", me$cis$ntests)
