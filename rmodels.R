@@ -980,14 +980,18 @@ ilogit = function(n){
 
 glht.fit.one = function(y, mod, comparison){
   d = p.values.lmer(mod)$coefficients
-  data.frame(pvalue=d[[comparison, "p.value.LRT"]],
-             t=d[[comparison, "t value"]],
-             coefficient=d[[comparison, "Estimate"]])
 
   #s = summary(glht(mod, linfct=comparison))
   #data.frame(pvalue=s$test$pvalues,
   #           t=s$test$tstat,
   #           coefficient=s$test$coefficients))
+  r = data.frame(pvalue=d[[comparison, "p.value.LRT"]],
+             t=d[[comparison, "t value"]],
+             coefficient=d[[comparison, "Estimate"]])
+  if(class(r) == "try-error") { 
+      return(data.frame(pvalue=NaN, t=NaN, coefficient=NaN))
+  }
+  r
 }
 
 attributable.fraction = function(model, df, vars, col=as.character(model[[2]])){
