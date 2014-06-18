@@ -117,8 +117,18 @@ shared_rows_cols = function(a, b, acolname=NA){
 }
 
 
-normalize.450K.method = function(targets, method=c("dasen", "swan"), id_col=1, prefix=NULL){
+normalize.450K.method = function(targets, method=c("dasen", "swan"), id_col=1, prefix=NULL,
+    do.estimateCellCounts=FALSE){
     library('minfi')
+    if(do.estimateCellCounts){
+        rgset = read.450k.exp(targets=targets, extended=FALSE)
+        png(sprintf("%scellmeans.png", prefix))
+        r = estimateCellCounts(rgset, meanPlot=TRUE)
+        rownames(r) = targets[,id_col]
+        dev.off()
+        write.table(r, file=sprintf("%s-cellcounts.txt", prefix), quote=F, sep="\t")
+        return()
+    }
     rgset = read.450k.exp(targets=targets, extended=TRUE)
 
     qcReport(rgset, sampNames=targets$StudyID, sampGroups=targets$Sample_Plate)
@@ -1086,7 +1096,7 @@ p.values.lmer <- function(x) {
                        collapse=" + "), formula.ranef))
     out.reduced <- lmer(formula.reduced, data=data.lmer, REML=F)
     out.LRT <- data.frame(anova(out.full, out.reduced))
-    p.value.LRT[i] <- round(out.LRT[2, 8], 3)
+    p.value.LRT[i] <- out.LRT[2, 8]
   }
   summary.model$coefficients <- cbind(summary.model$coefficients, p.value.LRT)
   summary.model$methTitle <- c("\n", summary.model$methTitle, 
