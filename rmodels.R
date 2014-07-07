@@ -955,7 +955,7 @@ agilent.limma = function(targets, model, names=NULL, coef=2,
   
 }
 
-glht.fit.ez = function(dat, clin, model, comparison, mc.cores=4, icoef=FALSE){
+glht.fit.ez = function(dat, clin, model, comparison, mc.cores=4, icoef=FALSE, robust=FALSE){
   # this is used for fitting lme4 functions, where a model is, e.g.
   # ~ 0 + disease + age + (1|family)
   # with comparison of 'diseaseCOPD - diseaseIPF = 0' as would be
@@ -965,14 +965,17 @@ glht.fit.ez = function(dat, clin, model, comparison, mc.cores=4, icoef=FALSE){
   library(lme4)
   library(multcomp)
   library(parallel)
+  library(lmerTest)
+  library(LMERConvenienceFunctions)
   model = as.formula(model)
 
   res = mclapply(1:nrow(dat), function(i){
     if(i %% 10000 == 0){ message(paste("at record", i)) }
     y = dat[i,]
     mm = paste0(" y ~ ", paste0(as.character(model[[2]]), collapse=" + "))
-    mod = lmer(as.formula(mm), clin)
-    r = glht.fit.one(y, mod, comparison)
+    r = glht.fit.one(y, mm, clin, comparison, robust=robust)
+    #mod = lme4::lmer(as.formula(mm), clin)
+
     r$probe = rownames(dat)[i]
     r$cmp = rownames(r)
     rownames(r) = NULL
@@ -988,19 +991,22 @@ ilogit = function(n){
     1 / (1 + exp(-n))
 }
 
-glht.fit.one = function(y, mod, comparison){
-  d = p.values.lmer(mod)$coefficients
 
-  #s = summary(glht(mod, linfct=comparison))
-  #data.frame(pvalue=s$test$pvalues,
-  #           t=s$test$tstat,
-  #           coefficient=s$test$coefficients))
-  r = data.frame(pvalue=d[[comparison, "p.value.LRT"]],
+glht.fit.one = function(y, model, clin, comparison, robust=FALSE){
+  clin$y = y
+  model = as.formula(model)
+  mod = lme4::lmer(model, data=clin)
+  if(robust){
+      # trim outliers
+      x = capture.output(clin = romr.fnc(mod, clin)$data)
+      mod = update(mod)
+  }
+
+  d = summary(mod)$coefficients
+  pvalue = p.val.lmer(model, clin, comparison)
+  r = data.frame(pvalue=pvalue,
              t=d[[comparison, "t value"]],
              coefficient=d[[comparison, "Estimate"]])
-  if(class(r) == "try-error") { 
-      return(data.frame(pvalue=NaN, t=NaN, coefficient=NaN))
-  }
   r
 }
 
@@ -1070,8 +1076,13 @@ attributable.fraction = function(model, df, vars, col=as.character(model[[2]])){
 
 }
 
+p.val.lmer = function(model, clin, comparison){
+    r = lmerTest::summary(lmerTest::lmer(model, clin))$coefficients
+    return(r[[comparison, 'Pr(>|t|)']])
+}
+
 # from: http://blog.lib.umn.edu/moor0554/canoemoore/2010/09/lmer_p-values_lrt.html
-p.values.lmer <- function(x) {
+p.values.lmer <- function(x, robust=FALSE) {
   summary.model <- summary(x)
   data.lmer <- data.frame(model.matrix(x))
   names(data.lmer) <- names(fixef(x))
@@ -1089,12 +1100,22 @@ p.values.lmer <- function(x) {
   names(data.ranef) <- names(ranef(x))
   data.lmer <- data.frame(x@frame[, 1], data.lmer, data.ranef)
   names(data.lmer)[1] <- var.dep
-  out.full <- lmer(formula.full, data=data.lmer, REML=F)
+  if(robust){
+    out.full <- rlmer(formula.full, data=data.lmer, REML=F, method="DASvar")
+    class(out.full) = "lmerMod"
+  } else {
+    out.full <- lmer(formula.full, data=data.lmer, REML=F)
+  }
   p.value.LRT <- vector(length=length(vars.fixef))
   for(i in 1:length(vars.fixef)) {
     formula.reduced <- as.formula(paste(var.dep, "~ -1 +", paste(vars.fixef[-i], 
                        collapse=" + "), formula.ranef))
-    out.reduced <- lmer(formula.reduced, data=data.lmer, REML=F)
+    if(robust){
+      out.reduced <- rlmer(formula.reduced, data=data.lmer, REML=F, method="DASvar")
+      class(out.reduced) = "lmerMod"
+    } else {
+      out.reduced <- lmer(formula.reduced, data=data.lmer, REML=F)
+    }
     out.LRT <- data.frame(anova(out.full, out.reduced))
     p.value.LRT[i] <- out.LRT[2, 8]
   }
