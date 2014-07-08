@@ -6,9 +6,9 @@ options(scipen=4, stringsAsFactors=FALSE) # stop it from printing 1e6 instead of
 
 logit = defmacro(p, expr=log(p) - log(1 - p))
 
-genomic_control = function(pvals, mid.fn=median){
+genomic_control = function(pvals, mid.fn=median, na.rm=TRUE){
     # http://en.wikipedia.org/wiki/Population_stratification
-    mid.fn(qchisq(pvals, df=1, lower.tail=F)) / 0.4549
+    mid.fn(qchisq(pvals, df=1, lower.tail=F), na.rm=na.rm) / 0.4549
 }
 
 stouffer_liptak = function(pvalues, sigma, lower.tail=TRUE){
@@ -996,18 +996,24 @@ glht.fit.one = function(y, model, clin, comparison, robust=FALSE){
   clin$y = y
   model = as.formula(model)
   mod = lme4::lmer(model, data=clin)
+  empty = data.frame(pvalue=NaN, t=NaN, coefficient=NaN)
+
   if(robust){
       # trim outliers
       x = capture.output(clin = romr.fnc(mod, clin)$data)
-      mod = update(mod)
+      mod = try(update(mod), TRUE)
+      if(inherits(mod, "try-error")){ return(empty) }
   }
 
-  d = summary(mod)$coefficients
-  pvalue = p.val.lmer(model, clin, comparison)
-  r = data.frame(pvalue=pvalue,
+  d = try(summary(mod), TRUE)
+  if(inherits(d, "try-error")){ return(empty) }
+  d = d$coefficients
+
+  pvalue = try(p.val.lmer(model, clin, comparison), TRUE)
+  if(inherits(pvalue, "try-error")){ pvalue=NaN }
+  data.frame(pvalue=pvalue,
              t=d[[comparison, "t value"]],
              coefficient=d[[comparison, "Estimate"]])
-  r
 }
 
 attributable.fraction = function(model, df, vars, col=as.character(model[[2]])){
