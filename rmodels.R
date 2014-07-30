@@ -414,11 +414,12 @@ peer.limma.ez = function(data, clin, model=NULL,
 
         # remove any rows with na
         complete = complete.cases(clin[,attr(terms(full_formula), "term.labels"), drop=TRUE])
-        mod  = model.matrix(full_formula, data=clin)
+        mod = model.matrix(full_formula, data=clin)
     } else { # they sent in a matrix, not a formula
         complete = complete.cases(clin)
         mod  = as.matrix(clin[complete,], ncol=ncol(clin))
     }
+    rownames(mod) = rownames(clin)
 
     err.log("removing:", sum(!complete), "because of missing data")
     err.log("leaving:", sum(complete), "rows of data.")
