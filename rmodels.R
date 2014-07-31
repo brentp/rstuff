@@ -1028,6 +1028,13 @@ attributable.fraction = function(model, df, vars, col=as.character(model[[2]])){
     # ...  chr1_6263874 + chr1_21750368 + chr1_21773847
     # > df = read.delim('my.covariates.txt')
     # print(attributable.fraction(model, df, vars))
+    mm = model.matrix(model, df)
+    if(nrow(mm) != nrow(df)){
+        n_missing = nrow(df) - nrow(mm)
+        message(sprintf("removing %d rows with missing values", n_missing))
+        df = df[rownames(mm),]
+    } 
+
     fit <- glm(model, data=df, family=binomial(link="logit"))
     ref.subset = df[, col] == FALSE
     theta_hat <- unname(coefficients(fit))
