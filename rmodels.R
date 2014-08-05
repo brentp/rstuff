@@ -990,7 +990,12 @@ glht.fit.ez = function(dat, clin, model, comparison, mc.cores=4, icoef=FALSE, ro
   res = mclapply(1:nrow(dat), function(i){
     if(i %% 10000 == 0){ message(paste("at record", i)) }
     y = dat[i,]
-    mm = paste0(" y ~ ", paste0(as.character(model[[2]]), collapse=" + "))
+    m0 = Reduce(paste, deparse(model))[[1]]
+    mleft = unlist(strsplit(m0, "~", fixed=TRUE))
+    mleft = mleft[length(mleft)]
+
+    #mm = paste0(" y ~ ", paste0(as.character(model[[2]]), collapse=" + "))
+    mm = paste0(" y ~ ", mleft[[1]])
     r = glht.fit.one(y, mm, clin, comparison, robust=robust)
     #mod = lme4::lmer(as.formula(mm), clin)
 
@@ -1011,7 +1016,7 @@ ilogit = function(n){
 
 
 glht.fit.one = function(y, model, clin, comparison, robust=FALSE){
-  clin$y = y
+  clin$y = unlist(y)
   model = as.formula(model)
   mod = lme4::lmer(model, data=clin)
   empty = data.frame(pvalue=NaN, t=NaN, coefficient=NaN)
