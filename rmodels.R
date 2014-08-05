@@ -11,6 +11,23 @@ genomic_control = function(pvals, mid.fn=median, na.rm=TRUE){
     mid.fn(qchisq(pvals, df=1, lower.tail=F), na.rm=na.rm) / 0.4549
 }
 
+# calculate the odds-ratio for a logistic model fit with glm
+glm.or = function(fit, coef){
+    library(MASS)
+    ci = tryCatch(exp(confint(fit)), error=function(e) NA)
+    s = exp(coef(fit))
+    OR = s[[coef]]
+    if(!is.na(ci)){
+        OR_CI = sprintf("(%.3f, %.3f)", ci[[coef, '2.5 %']], ci[[coef, '97.5 %']])
+    } else {
+        OR_CI = "NA"
+    }
+    list(OR=OR, OR_CI=OR_CI)
+}
+
+
+
+
 stouffer_liptak = function(pvalues, sigma, lower.tail=TRUE){
     qvalues = qnorm(pvalues, mean=0, sd=1, lower.tail=lower.tail)
     C = chol(sigma)
